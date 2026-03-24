@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vino.local/schema/vino-envelope-v1.schema.json",
+  "title": "Vino Envelope v1",
+  "type": "object",
+  "required": [
+    "protocol",
+    "messageId",
+    "kind",
+    "action",
+    "timestamp",
+    "source",
+    "payload"
+  ],
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "const": "vino.control/1"
+    },
+    "messageId": {
+      "type": "string"
+    },
+    "correlationId": {
+      "type": ["string", "null"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "hello",
+        "heartbeat",
+        "status",
+        "command",
+        "reply",
+        "file.begin",
+        "file.chunk",
+        "file.commit",
+        "error"
+      ]
+    },
+    "action": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "required": ["role", "deviceId"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["iphone", "desktop", "gateway"]
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "name": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "target": {
+      "type": ["object", "null"],
+      "properties": {
+        "deviceIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "all": {
+          "type": "boolean"
+        }
+      }
+    },
+    "context": {
+      "type": ["object", "null"],
+      "properties": {
+        "productUUID": {
+          "type": ["string", "null"]
+        },
+        "pointIndex": {
+          "type": ["integer", "null"]
+        },
+        "jobId": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}
+

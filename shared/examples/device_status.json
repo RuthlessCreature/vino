@@ -1,0 +1,39 @@
+{
+  "protocol": "vino.control/1",
+  "messageId": "E14F5E61-567B-4467-BED7-84C03B3EB634",
+  "correlationId": null,
+  "kind": "status",
+  "action": "device.status.push",
+  "timestamp": "2026-03-24T09:31:00Z",
+  "source": {
+    "role": "iphone",
+    "deviceId": "iphone-001",
+    "name": "vino-iphone-a"
+  },
+  "target": null,
+  "context": {
+    "productUUID": "P-2026-03-24-0001",
+    "pointIndex": 3
+  },
+  "payload": {
+    "captureMode": "stream",
+    "selectedLens": "wide",
+    "recordingProfile": "hevc",
+    "isRecording": false,
+    "inferenceEnabled": true,
+    "persistMediaEnabled": false,
+    "selectedModelId": "defect-detector-v4",
+    "ipAddresses": ["en0:192.168.31.25", "bridge0:10.0.0.2"],
+    "settings": {
+      "frameRate": 30,
+      "whiteBalanceTemperature": 5000,
+      "whiteBalanceTint": 0,
+      "exposureSeconds": 0.01,
+      "iso": 64,
+      "exposureBias": 0,
+      "zoomFactor": 1,
+      "lensPosition": 0.5
+    }
+  }
+}
+

@@ -1,0 +1,23 @@
+{
+  "protocol": "vino.control/1",
+  "messageId": "BA9C44ED-7A08-4569-88F9-844E2F8D7005",
+  "correlationId": null,
+  "kind": "command",
+  "action": "capture.photo.trigger",
+  "timestamp": "2026-03-24T09:32:00Z",
+  "source": {
+    "role": "desktop",
+    "deviceId": "desktop-main",
+    "name": "vino console"
+  },
+  "target": {
+    "deviceIds": ["iphone-001"]
+  },
+  "context": {
+    "productUUID": "P-2026-03-24-0001",
+    "pointIndex": 3,
+    "jobId": "job-001"
+  },
+  "payload": {}
+}
+
