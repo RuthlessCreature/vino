@@ -100,10 +100,24 @@ CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/core/DeviceRegistry.cpp -o CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.s
 
+CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
+CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/core/RuntimePaths.cpp
+CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/core/RuntimePaths.cpp
+
+CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/core/RuntimePaths.cpp > CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.i
+
+CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/core/RuntimePaths.cpp -o CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.s
+
 CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/BatchGateway.cpp
 CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/BatchGateway.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.i: cmake_force
@@ -117,7 +131,7 @@ CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/Controller.cpp
 CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/Controller.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.i: cmake_force
@@ -131,7 +145,7 @@ CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/PostGateway.cpp
 CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/network/PostGateway.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.i: cmake_force
@@ -145,7 +159,7 @@ CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/protocol/MiniJson.cpp
 CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/protocol/MiniJson.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.i: cmake_force
@@ -159,7 +173,7 @@ CMakeFiles/vino_desktop_core.dir/src/protocol/MiniJson.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/protocol/Protocol.cpp
 CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/protocol/Protocol.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.i: cmake_force
@@ -173,7 +187,7 @@ CMakeFiles/vino_desktop_core.dir/src/protocol/Protocol.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/ui/DesktopRuntime.cpp
 CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/ui/DesktopRuntime.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.i: cmake_force
@@ -187,7 +201,7 @@ CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.cpp.s: cmake_force
 CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o: CMakeFiles/vino_desktop_core.dir/flags.make
 CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o: /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/ui/FuturisticTheme.cpp
 CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o: CMakeFiles/vino_desktop_core.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o -MF CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o.d -o CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o -c /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/src/ui/FuturisticTheme.cpp
 
 CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.i: cmake_force
@@ -202,6 +216,7 @@ CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.s: cmake_force
 vino_desktop_core_OBJECTS = \
 "CMakeFiles/vino_desktop_core.dir/src/core/Blueprint.cpp.o" \
 "CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.o" \
+"CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o" \
 "CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o" \
 "CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o" \
 "CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o" \
@@ -215,6 +230,7 @@ vino_desktop_core_EXTERNAL_OBJECTS =
 
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/core/Blueprint.cpp.o
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.o
+libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.o
@@ -224,7 +240,7 @@ libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/ui/DesktopRuntime.c
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/src/ui/FuturisticTheme.cpp.o
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/build.make
 libvino_desktop_core.a: CMakeFiles/vino_desktop_core.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Linking CXX static library libvino_desktop_core.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking CXX static library libvino_desktop_core.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/vino_desktop_core.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/vino_desktop_core.dir/link.txt --verbose=$(VERBOSE)
 

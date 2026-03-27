@@ -46,6 +46,7 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/Platform/Linker/Apple-AppleClang.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/Platform/UnixPaths.cmake"
   "/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/CMakeLists.txt"
+  "/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/Resources/Info.plist.in"
   "CMakeFiles/4.3.0-rc1/CMakeCXXCompiler.cmake"
   "CMakeFiles/4.3.0-rc1/CMakeOBJCXXCompiler.cmake"
   "CMakeFiles/4.3.0-rc1/CMakeSystem.cmake"
@@ -59,6 +60,9 @@ set(CMAKE_MAKEFILE_OUTPUTS
 
 # Byproducts of CMake generate step:
 set(CMAKE_MAKEFILE_PRODUCTS
+  "vino_Desktop.app/Contents/MacOS"
+  "vino_Desktop.app/Contents/Info.plist"
+  "vino_Desktop.app/Contents/Info.plist"
   "CMakeFiles/CMakeDirectoryInformation.cmake"
   )
 

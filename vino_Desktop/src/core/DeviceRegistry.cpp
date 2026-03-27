@@ -7,6 +7,27 @@ namespace vino::desktop {
 
 namespace {
 
+constexpr auto offline_timeout = std::chrono::seconds(5);
+
+std::chrono::steady_clock::time_point monotonic_now() {
+    return std::chrono::steady_clock::now();
+}
+
+void refresh_online_state(DeviceSnapshot& snapshot) {
+    if (!snapshot.online) {
+        return;
+    }
+
+    if (snapshot.last_control_seen_monotonic == std::chrono::steady_clock::time_point {}) {
+        return;
+    }
+
+    if (monotonic_now() - snapshot.last_control_seen_monotonic > offline_timeout) {
+        snapshot.online = false;
+        snapshot.last_message = "心跳超时";
+    }
+}
+
 json::Value snapshot_to_json(const DeviceSnapshot& snapshot) {
     return json::Value::Object{
         {"deviceId", snapshot.device_id},
@@ -55,6 +76,8 @@ void DeviceRegistry::upsert_connected_host(const std::string& host, int port) {
     snapshot.host = host;
     snapshot.port = port;
     snapshot.online = true;
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
     apply_alias_override(snapshot, host);
     host_to_device_id_[temporary_id] = temporary_id;
 }
@@ -86,6 +109,8 @@ void DeviceRegistry::apply_hello(
     merged.online = true;
     merged.last_seen = timestamp;
     merged.last_message = "device.hello";
+    merged.last_seen_monotonic = monotonic_now();
+    merged.last_control_seen_monotonic = merged.last_seen_monotonic;
     merged.hello_payload = payload;
     apply_alias_override(merged, name.empty() ? device_id : name);
 
@@ -106,6 +131,8 @@ void DeviceRegistry::apply_status(
     snapshot.online = true;
     snapshot.last_seen = timestamp;
     snapshot.last_message = message;
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
     snapshot.status_payload = payload;
 }
 
@@ -117,6 +144,9 @@ void DeviceRegistry::apply_capabilities(
     auto& snapshot = devices_[device_id];
     snapshot.device_id = device_id;
     apply_alias_override(snapshot, device_id);
+    snapshot.online = true;
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
     snapshot.capabilities_payload = payload;
 }
 
@@ -132,6 +162,8 @@ void DeviceRegistry::apply_inference(
     snapshot.online = true;
     snapshot.last_seen = timestamp;
     snapshot.last_message = "inference.result.push";
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
     snapshot.inference_payload = payload;
 }
 
@@ -148,6 +180,8 @@ void DeviceRegistry::apply_media(
     snapshot.online = true;
     snapshot.last_seen = timestamp;
     snapshot.last_message = "media.push.commit";
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
     snapshot.last_media_path = path;
     snapshot.last_media_category = category;
     snapshot.last_media_seen = timestamp;
@@ -165,9 +199,6 @@ void DeviceRegistry::apply_preview(
     auto& snapshot = devices_[device_id];
     snapshot.device_id = device_id;
     apply_alias_override(snapshot, device_id);
-    snapshot.online = true;
-    snapshot.last_seen = timestamp;
-    snapshot.last_message = "preview.frame.push";
     snapshot.preview_jpeg_base64 = jpeg_base64;
     snapshot.preview_image_width = image_width;
     snapshot.preview_image_height = image_height;
@@ -187,6 +218,8 @@ void DeviceRegistry::mark_seen(
     snapshot.online = true;
     snapshot.last_seen = timestamp;
     snapshot.last_message = message;
+    snapshot.last_seen_monotonic = monotonic_now();
+    snapshot.last_control_seen_monotonic = snapshot.last_seen_monotonic;
 }
 
 void DeviceRegistry::mark_disconnected_host(const std::string& host, int port) {
@@ -196,6 +229,8 @@ void DeviceRegistry::mark_disconnected_host(const std::string& host, int port) {
         if (const auto iterator = devices_.find(mapped->second); iterator != devices_.end()) {
             iterator->second.online = false;
             iterator->second.last_message = "socket disconnected";
+            iterator->second.last_seen_monotonic = std::chrono::steady_clock::time_point {};
+            iterator->second.last_control_seen_monotonic = std::chrono::steady_clock::time_point {};
         }
         return;
     }
@@ -203,6 +238,8 @@ void DeviceRegistry::mark_disconnected_host(const std::string& host, int port) {
     if (const auto iterator = devices_.find(key); iterator != devices_.end()) {
         iterator->second.online = false;
         iterator->second.last_message = "socket disconnected";
+        iterator->second.last_seen_monotonic = std::chrono::steady_clock::time_point {};
+        iterator->second.last_control_seen_monotonic = std::chrono::steady_clock::time_point {};
     }
 }
 
@@ -235,7 +272,9 @@ std::optional<DeviceSnapshot> DeviceRegistry::find_by_device_id(const std::strin
     if (iterator == devices_.end()) {
         return std::nullopt;
     }
-    return iterator->second;
+    DeviceSnapshot snapshot = iterator->second;
+    refresh_online_state(snapshot);
+    return snapshot;
 }
 
 std::optional<DeviceSnapshot> DeviceRegistry::find_by_host(const std::string& host, int port) const {
@@ -244,11 +283,15 @@ std::optional<DeviceSnapshot> DeviceRegistry::find_by_host(const std::string& ho
     const auto mapped = host_to_device_id_.find(key);
     if (mapped != host_to_device_id_.end()) {
         if (const auto iterator = devices_.find(mapped->second); iterator != devices_.end()) {
-            return iterator->second;
+            DeviceSnapshot snapshot = iterator->second;
+            refresh_online_state(snapshot);
+            return snapshot;
         }
     }
     if (const auto iterator = devices_.find(key); iterator != devices_.end()) {
-        return iterator->second;
+        DeviceSnapshot snapshot = iterator->second;
+        refresh_online_state(snapshot);
+        return snapshot;
     }
     return std::nullopt;
 }
@@ -258,7 +301,9 @@ std::vector<DeviceSnapshot> DeviceRegistry::list() const {
     std::vector<DeviceSnapshot> devices;
     devices.reserve(devices_.size());
     for (const auto& [_, snapshot] : devices_) {
-        devices.push_back(snapshot);
+        DeviceSnapshot copy = snapshot;
+        refresh_online_state(copy);
+        devices.push_back(std::move(copy));
     }
     return devices;
 }

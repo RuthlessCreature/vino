@@ -3,9 +3,13 @@
 #include <arpa/inet.h>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <filesystem>
+#include <ifaddrs.h>
 #include <iomanip>
 #include <memory>
+#include <net/if.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -15,6 +19,7 @@
 #include "vino_desktop/FuturisticTheme.hpp"
 #include "vino_desktop/MiniJson.hpp"
 #include "vino_desktop/Protocol.hpp"
+#include "vino_desktop/RuntimePaths.hpp"
 
 namespace {
 
@@ -24,6 +29,16 @@ using vino::desktop::ModelTransferSnapshot;
 using vino::desktop::TriggerContext;
 using vino::desktop::UiLogEntry;
 using vino::desktop::json::Value;
+
+struct PopupOption {
+    std::string value {};
+    std::string title {};
+};
+
+struct HostPortInput {
+    std::string host {};
+    int port {vino::desktop::PortMap::control};
+};
 
 NSString* to_ns_string(const std::string& value) {
     NSString* string = [[NSString alloc] initWithBytes:value.data() length:value.size() encoding:NSUTF8StringEncoding];
@@ -39,6 +54,170 @@ std::string to_std_string(NSString* value) {
     return utf8 == nullptr ? std::string {} : std::string(utf8);
 }
 
+std::string lowercase_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+bool contains_case_insensitive(std::string_view haystack, std::string_view needle) {
+    if (needle.empty()) {
+        return true;
+    }
+
+    const std::string haystack_lower = lowercase_copy(std::string(haystack));
+    const std::string needle_lower = lowercase_copy(std::string(needle));
+    return haystack_lower.find(needle_lower) != std::string::npos;
+}
+
+std::string trim_copy(std::string value) {
+    const auto is_space = [](unsigned char character) {
+        return std::isspace(character) != 0;
+    };
+
+    while (!value.empty() && is_space(static_cast<unsigned char>(value.front()))) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && is_space(static_cast<unsigned char>(value.back()))) {
+        value.pop_back();
+    }
+    return value;
+}
+
+std::vector<std::string> split_string(std::string_view value, char separator) {
+    std::vector<std::string> parts;
+    std::string current;
+    for (const char character : value) {
+        if (character == separator) {
+            parts.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(character);
+    }
+    parts.push_back(current);
+    return parts;
+}
+
+std::optional<HostPortInput> parse_host_port_input(const std::string& input) {
+    const std::string trimmed = trim_copy(input);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+
+    HostPortInput result;
+    result.host = trimmed;
+
+    if (trimmed.front() == '[') {
+        const auto closing = trimmed.find(']');
+        if (closing == std::string::npos) {
+            return std::nullopt;
+        }
+        result.host = trimmed.substr(1, closing - 1);
+        if (closing + 1 < trimmed.size()) {
+            if (trimmed[closing + 1] != ':') {
+                return std::nullopt;
+            }
+            try {
+                result.port = std::stoi(trimmed.substr(closing + 2));
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+        return result;
+    }
+
+    const auto first_colon = trimmed.find(':');
+    const auto last_colon = trimmed.rfind(':');
+    if (first_colon != std::string::npos && first_colon == last_colon) {
+        try {
+            result.host = trimmed.substr(0, first_colon);
+            result.port = std::stoi(trimmed.substr(first_colon + 1));
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+
+    result.host = trim_copy(result.host);
+    if (result.host.empty() || result.port <= 0 || result.port > 65535) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+std::vector<std::string> local_ipv4_addresses() {
+    std::vector<std::string> addresses;
+    ifaddrs* interfaces = nullptr;
+    if (getifaddrs(&interfaces) != 0 || interfaces == nullptr) {
+        return addresses;
+    }
+
+    for (ifaddrs* entry = interfaces; entry != nullptr; entry = entry->ifa_next) {
+        if (entry->ifa_addr == nullptr || entry->ifa_addr->sa_family != AF_INET) {
+            continue;
+        }
+        if ((entry->ifa_flags & IFF_UP) == 0 || (entry->ifa_flags & IFF_LOOPBACK) != 0) {
+            continue;
+        }
+
+        char buffer[INET_ADDRSTRLEN] = {};
+        const auto* ipv4 = reinterpret_cast<const sockaddr_in*>(entry->ifa_addr);
+        if (inet_ntop(AF_INET, &(ipv4->sin_addr), buffer, sizeof(buffer)) == nullptr) {
+            continue;
+        }
+
+        std::string address = buffer;
+        if (address.rfind("127.", 0) == 0 || address.rfind("169.254.", 0) == 0) {
+            continue;
+        }
+        addresses.push_back(address);
+    }
+
+    freeifaddrs(interfaces);
+    std::sort(addresses.begin(), addresses.end());
+    addresses.erase(std::unique(addresses.begin(), addresses.end()), addresses.end());
+    return addresses;
+}
+
+std::vector<std::string> local_ipv4_prefixes() {
+    std::vector<std::string> prefixes;
+    for (const auto& address : local_ipv4_addresses()) {
+        const auto parts = split_string(address, '.');
+        if (parts.size() != 4) {
+            continue;
+        }
+        prefixes.push_back(parts[0] + "." + parts[1] + "." + parts[2]);
+    }
+
+    std::sort(prefixes.begin(), prefixes.end());
+    prefixes.erase(std::unique(prefixes.begin(), prefixes.end()), prefixes.end());
+    return prefixes;
+}
+
+std::vector<std::string> scan_prefixes_from_input(const std::string& input) {
+    const std::string trimmed = trim_copy(input);
+    if (trimmed.empty() || trimmed == "自动" || lowercase_copy(trimmed) == "auto") {
+        return local_ipv4_prefixes();
+    }
+
+    std::vector<std::string> prefixes;
+    std::string normalized = trimmed;
+    std::replace(normalized.begin(), normalized.end(), ';', ',');
+    const auto groups = split_string(normalized, ',');
+    for (const auto& group : groups) {
+        const std::string candidate = trim_copy(group);
+        if (!candidate.empty()) {
+            prefixes.push_back(candidate);
+        }
+    }
+
+    if (prefixes.empty()) {
+        prefixes = local_ipv4_prefixes();
+    }
+    return prefixes;
+}
+
 NSColor* hex_color(unsigned rgb, CGFloat alpha = 1.0) {
     return [NSColor colorWithCalibratedRed:((rgb >> 16) & 0xFF) / 255.0
                                      green:((rgb >> 8) & 0xFF) / 255.0
@@ -48,6 +227,180 @@ NSColor* hex_color(unsigned rgb, CGFloat alpha = 1.0) {
 
 NSFont* mono_font(CGFloat size, NSFontWeight weight = NSFontWeightRegular) {
     return [NSFont monospacedSystemFontOfSize:size weight:weight];
+}
+
+NSColor* log_color_for_level(const std::string& level) {
+    const std::string lowered = lowercase_copy(level);
+    if (lowered == "error") {
+        return hex_color(0xFF6B7A);
+    }
+    if (lowered == "warn" || lowered == "warning") {
+        return hex_color(0xFFC56B);
+    }
+    if (lowered == "info") {
+        return hex_color(0x62F0FF);
+    }
+    return hex_color(0xF3F6F8);
+}
+
+std::string localized_capture_mode(const std::string& value) {
+    if (value == "photo") {
+        return "拍照";
+    }
+    if (value == "stream") {
+        return "视频流";
+    }
+    return value.empty() ? "未就绪" : value;
+}
+
+std::string localized_focus_mode(const std::string& value) {
+    if (value == "continuousAuto") {
+        return "自动对焦";
+    }
+    if (value == "locked") {
+        return "定焦";
+    }
+    return value.empty() ? "未就绪" : value;
+}
+
+std::string localized_lens_name(const std::string& value) {
+    if (value == "wide") {
+        return "主摄";
+    }
+    if (value == "ultraWide") {
+        return "超广角";
+    }
+    if (value == "telephoto") {
+        return "长焦";
+    }
+    return value.empty() ? "未就绪" : value;
+}
+
+std::string localized_profile_name(const std::string& value) {
+    if (value == "h264") {
+        return "H.264";
+    }
+    if (value == "hevc") {
+        return "HEVC";
+    }
+    if (value == "proRes") {
+        return "Apple ProRes";
+    }
+    return value.empty() ? "未就绪" : value;
+}
+
+std::vector<PopupOption> capture_mode_options() {
+    return {
+        {"photo", "拍照"},
+        {"stream", "视频流"}
+    };
+}
+
+std::vector<PopupOption> focus_mode_options() {
+    return {
+        {"continuousAuto", "自动对焦"},
+        {"locked", "定焦"}
+    };
+}
+
+std::vector<PopupOption> lens_options(const std::vector<std::string>& values = {"wide", "ultraWide", "telephoto"}) {
+    std::vector<PopupOption> options;
+    options.reserve(values.size());
+    for (const auto& value : values) {
+        options.push_back(PopupOption{value, localized_lens_name(value)});
+    }
+    return options;
+}
+
+std::vector<PopupOption> recording_profile_options(bool supports_prores = true) {
+    std::vector<PopupOption> options {
+        {"h264", "H.264"},
+        {"hevc", "HEVC"}
+    };
+    if (supports_prores) {
+        options.push_back({"proRes", "Apple ProRes"});
+    }
+    return options;
+}
+
+std::vector<PopupOption> terminal_level_options() {
+    return {
+        {"all", "全部级别"},
+        {"info", "信息"},
+        {"warn", "警告"},
+        {"error", "错误"}
+    };
+}
+
+std::vector<PopupOption> terminal_scope_options() {
+    return {
+        {"all", "全部设备"},
+        {"current", "当前设备"}
+    };
+}
+
+std::string localized_log_level_name(const std::string& value) {
+    const std::string lowered = lowercase_copy(value);
+    if (lowered == "all") {
+        return "全部";
+    }
+    if (lowered == "info") {
+        return "信息";
+    }
+    if (lowered == "warn" || lowered == "warning") {
+        return "警告";
+    }
+    if (lowered == "error") {
+        return "错误";
+    }
+    return value;
+}
+
+std::string localized_transfer_stage(const std::string& value) {
+    if (value == "begin") {
+        return "初始化";
+    }
+    if (value == "streaming") {
+        return "传输中";
+    }
+    if (value == "commit") {
+        return "提交中";
+    }
+    if (value == "completed") {
+        return "完成";
+    }
+    if (value == "failed") {
+        return "失败";
+    }
+    return value;
+}
+
+std::string localized_transfer_status(const std::string& value) {
+    if (value == "queued") {
+        return "排队中";
+    }
+    if (value == "pending") {
+        return "待回执";
+    }
+    if (value == "sending") {
+        return "发送中";
+    }
+    if (value == "awaiting_reply") {
+        return "等待回执";
+    }
+    if (value == "accepted") {
+        return "已接受";
+    }
+    if (value == "completed") {
+        return "已完成";
+    }
+    if (value == "rejected") {
+        return "已拒绝";
+    }
+    if (value == "send_failed") {
+        return "发送失败";
+    }
+    return value;
 }
 
 NSTextField* make_label(NSString* text, CGFloat size = 12.0, NSFontWeight weight = NSFontWeightRegular, NSColor* color = nil) {
@@ -63,7 +416,7 @@ NSTextField* make_input(NSString* placeholder, NSString* value = @"") {
     field.translatesAutoresizingMaskIntoConstraints = NO;
     field.placeholderString = placeholder;
     field.stringValue = value;
-    field.font = mono_font(12.0);
+    field.font = mono_font(11.0);
     field.textColor = hex_color(0xF3F6F8);
     field.backgroundColor = hex_color(0x050608, 0.92);
     field.bordered = NO;
@@ -73,13 +426,25 @@ NSTextField* make_input(NSString* placeholder, NSString* value = @"") {
     field.layer.borderColor = hex_color(0x24303A).CGColor;
     field.layer.borderWidth = 1.0;
     field.layer.cornerRadius = 10.0;
+    [field.heightAnchor constraintEqualToConstant:22.0].active = YES;
     return field;
+}
+
+void style_popup(NSPopUpButton* popup) {
+    if (popup == nil) {
+        return;
+    }
+    popup.translatesAutoresizingMaskIntoConstraints = NO;
+    popup.font = mono_font(11.0);
+    popup.controlSize = NSControlSizeSmall;
+    [popup.heightAnchor constraintEqualToConstant:22.0].active = YES;
 }
 
 NSButton* make_button(NSString* title, id target, SEL action) {
     NSButton* button = [NSButton buttonWithTitle:title target:target action:action];
     button.translatesAutoresizingMaskIntoConstraints = NO;
-    button.font = mono_font(12.0, NSFontWeightSemibold);
+    button.font = mono_font(11.0, NSFontWeightSemibold);
+    button.controlSize = NSControlSizeSmall;
     button.bezelStyle = NSBezelStyleRegularSquare;
     button.wantsLayer = YES;
     button.layer.backgroundColor = hex_color(0x0C1014).CGColor;
@@ -87,6 +452,7 @@ NSButton* make_button(NSString* title, id target, SEL action) {
     button.layer.borderWidth = 1.0;
     button.layer.cornerRadius = 10.0;
     button.contentTintColor = hex_color(0x62F0FF);
+    [button.heightAnchor constraintEqualToConstant:26.0].active = YES;
     return button;
 }
 
@@ -94,7 +460,8 @@ NSButton* make_toggle(NSString* title, id target, SEL action) {
     NSButton* button = [[NSButton alloc] initWithFrame:NSZeroRect];
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.title = title;
-    button.font = mono_font(12.0);
+    button.font = mono_font(11.0);
+    button.controlSize = NSControlSizeSmall;
     button.buttonType = NSButtonTypeSwitch;
     button.target = target;
     button.action = action;
@@ -108,9 +475,24 @@ NSStackView* make_stack(NSUserInterfaceLayoutOrientation orientation, CGFloat sp
     stack.orientation = orientation;
     stack.spacing = spacing;
     stack.edgeInsets = NSEdgeInsetsZero;
-    stack.alignment = NSLayoutAttributeLeading;
+    stack.alignment = orientation == NSUserInterfaceLayoutOrientationVertical
+        ? NSLayoutAttributeWidth
+        : NSLayoutAttributeCenterY;
     stack.distribution = NSStackViewDistributionFill;
     return stack;
+}
+
+void relax_vertical_layout(NSView* view) {
+    if (view == nil) {
+        return;
+    }
+
+    [view setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
+    [view setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
+
+    for (NSView* child in view.subviews) {
+        relax_vertical_layout(child);
+    }
 }
 
 NSView* make_preview_surface(NSImageView* __strong *out_image_view, NSTextField* __strong *out_title, NSTextField* __strong *out_subtitle) {
@@ -129,26 +511,26 @@ NSView* make_preview_surface(NSImageView* __strong *out_image_view, NSTextField*
     image_view.wantsLayer = YES;
     image_view.layer.backgroundColor = hex_color(0x050608, 0.72).CGColor;
 
-    NSTextField* title = make_label(@"LIVE PREVIEW MIRROR RESERVED", 11.0, NSFontWeightBold, hex_color(0xA8B7C2));
-    NSTextField* subtitle = make_label(@"desktop shell currently focuses on control, state, logs, and batch operations", 12.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    NSTextField* title = make_label(@"实时预览区待命", 11.0, NSFontWeightBold, hex_color(0xA8B7C2));
+    NSTextField* subtitle = make_label(@"当前桌面端聚焦设备控制、状态总览、模型管理、日志终端与批处理调度", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     subtitle.lineBreakMode = NSLineBreakByWordWrapping;
-    subtitle.maximumNumberOfLines = 4;
+    subtitle.maximumNumberOfLines = 2;
 
     [view addSubview:image_view];
     [view addSubview:title];
     [view addSubview:subtitle];
 
     [NSLayoutConstraint activateConstraints:@[
-        [view.heightAnchor constraintEqualToConstant:160.0],
+        [view.heightAnchor constraintEqualToConstant:72.0],
         [image_view.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:1.0],
         [image_view.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-1.0],
         [image_view.topAnchor constraintEqualToAnchor:view.topAnchor constant:1.0],
         [image_view.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-1.0],
-        [title.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:14.0],
-        [title.topAnchor constraintEqualToAnchor:view.topAnchor constant:14.0],
-        [subtitle.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:14.0],
-        [subtitle.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-14.0],
-        [subtitle.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-14.0]
+        [title.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:10.0],
+        [title.topAnchor constraintEqualToAnchor:view.topAnchor constant:10.0],
+        [subtitle.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:10.0],
+        [subtitle.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-10.0],
+        [subtitle.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-10.0]
     ]];
 
     if (out_image_view != nullptr) {
@@ -204,41 +586,42 @@ NSView* make_panel(NSString* title, NSView* body) {
     panel.layer.borderWidth = 1.0;
     panel.layer.cornerRadius = 16.0;
 
-    NSTextField* title_label = make_label(title, 11.0, NSFontWeightBold, hex_color(0xA8B7C2));
+    NSTextField* title_label = make_label(title, 10.5, NSFontWeightBold, hex_color(0xA8B7C2));
     body.translatesAutoresizingMaskIntoConstraints = NO;
 
     [panel addSubview:title_label];
     [panel addSubview:body];
 
     [NSLayoutConstraint activateConstraints:@[
-        [title_label.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:14.0],
-        [title_label.topAnchor constraintEqualToAnchor:panel.topAnchor constant:14.0],
-        [body.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:14.0],
-        [body.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-14.0],
-        [body.topAnchor constraintEqualToAnchor:title_label.bottomAnchor constant:10.0],
-        [body.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-14.0]
+        [title_label.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:8.0],
+        [title_label.topAnchor constraintEqualToAnchor:panel.topAnchor constant:8.0],
+        [body.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:8.0],
+        [body.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-8.0],
+        [body.topAnchor constraintEqualToAnchor:title_label.bottomAnchor constant:5.0],
+        [body.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-8.0]
     ]];
 
     return panel;
 }
 
 NSView* make_slider_row(NSString* title, NSSlider* __strong *out_slider, NSTextField* __strong *out_value, id target, SEL action, double min_value, double max_value) {
-    NSTextField* label = make_label(title, 12.0, NSFontWeightSemibold);
+    NSTextField* label = make_label(title, 11.0, NSFontWeightSemibold);
     label.alignment = NSTextAlignmentLeft;
+    [label.widthAnchor constraintEqualToConstant:54.0].active = YES;
 
-    NSTextField* value = make_label(@"0", 12.0, NSFontWeightRegular, hex_color(0x62F0FF));
+    NSTextField* value = make_label(@"0", 11.0, NSFontWeightRegular, hex_color(0x62F0FF));
     value.alignment = NSTextAlignmentRight;
-    [value.widthAnchor constraintEqualToConstant:92.0].active = YES;
+    [value.widthAnchor constraintEqualToConstant:46.0].active = YES;
 
     NSSlider* slider = [NSSlider sliderWithValue:min_value minValue:min_value maxValue:max_value target:target action:action];
     slider.translatesAutoresizingMaskIntoConstraints = NO;
     slider.continuous = YES;
 
-    NSStackView* row = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 10.0);
+    NSStackView* row = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 6.0);
     [row addArrangedSubview:label];
     [row addArrangedSubview:slider];
     [row addArrangedSubview:value];
-    [slider.widthAnchor constraintGreaterThanOrEqualToConstant:220.0].active = YES;
+    [slider.widthAnchor constraintGreaterThanOrEqualToConstant:60.0].active = YES;
 
     if (out_slider != nullptr) {
         *out_slider = slider;
@@ -296,13 +679,116 @@ std::vector<std::string> string_array_or_empty(const Value* value) {
 }
 
 std::string bool_text(bool value) {
-    return value ? "on" : "off";
+    return value ? "开" : "关";
 }
 
 std::string format_number(double value, int precision = 1) {
     std::ostringstream stream;
     stream << std::fixed << std::setprecision(precision) << value;
     return stream.str();
+}
+
+std::string last_active_text(const DeviceSnapshot& snapshot) {
+    if (snapshot.last_seen_monotonic == std::chrono::steady_clock::time_point {}) {
+        return snapshot.online ? "刚连接" : "未知";
+    }
+
+    const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - snapshot.last_seen_monotonic
+    );
+    const auto seconds = std::max<long long>(0, elapsed.count());
+
+    if (seconds <= 1) {
+        return "刚刚";
+    }
+    if (seconds < 60) {
+        return std::to_string(seconds) + " 秒前";
+    }
+    if (seconds < 3600) {
+        return std::to_string(seconds / 60) + " 分钟前";
+    }
+    return std::to_string(seconds / 3600) + " 小时前";
+}
+
+std::string device_state_digest(const DeviceSnapshot& snapshot) {
+    return std::string(snapshot.online ? "在线" : "离线") + " · " + last_active_text(snapshot);
+}
+
+std::string control_sync_signature(const DeviceSnapshot& snapshot) {
+    return snapshot.device_id
+        + "|status:" + snapshot.status_payload.stringify()
+        + "|caps:" + snapshot.capabilities_payload.stringify();
+}
+
+std::string popup_selected_value(NSPopUpButton* popup);
+
+bool approximately_equal(double lhs, double rhs, double tolerance) {
+    return std::fabs(lhs - rhs) <= tolerance;
+}
+
+bool controls_match_snapshot(
+    const DeviceSnapshot& snapshot,
+    NSPopUpButton* mode_popup,
+    NSPopUpButton* focus_popup,
+    NSPopUpButton* lens_popup,
+    NSPopUpButton* profile_popup,
+    NSSlider* fps_slider,
+    NSSlider* temperature_slider,
+    NSSlider* tint_slider,
+    NSSlider* exposure_slider,
+    NSSlider* iso_slider,
+    NSSlider* ev_slider,
+    NSSlider* zoom_slider,
+    NSSlider* lens_slider,
+    NSButton* flash_toggle,
+    NSButton* inference_toggle,
+    NSButton* persist_toggle,
+    NSButton* smooth_af_toggle
+) {
+    if (!snapshot.status_payload.is_object()) {
+        return false;
+    }
+
+    const Value& status = snapshot.status_payload;
+    if (popup_selected_value(mode_popup) != string_or(find_in_object(status, "captureMode"))) {
+        return false;
+    }
+    if (popup_selected_value(focus_popup) != string_or(find_in_object(status, "focusMode"))) {
+        return false;
+    }
+    if (popup_selected_value(lens_popup) != string_or(find_in_object(status, "selectedLens"))) {
+        return false;
+    }
+    if (popup_selected_value(profile_popup) != string_or(find_in_object(status, "recordingProfile"))) {
+        return false;
+    }
+
+    if ((flash_toggle.state == NSControlStateValueOn) != bool_or(find_in_object(status, "flashEnabled"), false)) {
+        return false;
+    }
+    if ((inference_toggle.state == NSControlStateValueOn) != bool_or(find_in_object(status, "inferenceEnabled"), false)) {
+        return false;
+    }
+    if ((persist_toggle.state == NSControlStateValueOn) != bool_or(find_in_object(status, "persistMediaEnabled"), false)) {
+        return false;
+    }
+    if ((smooth_af_toggle.state == NSControlStateValueOn) != bool_or(find_in_object(status, "smoothAutoFocusEnabled"), false)) {
+        return false;
+    }
+
+    const auto* settings = find_in_object(status, "settings");
+    if (settings == nullptr || !settings->is_object()) {
+        return false;
+    }
+
+    return approximately_equal(fps_slider.doubleValue, number_or(find_in_object(*settings, "frameRate"), fps_slider.doubleValue), 0.11)
+        && approximately_equal(temperature_slider.doubleValue, number_or(find_in_object(*settings, "whiteBalanceTemperature"), temperature_slider.doubleValue), 1.0)
+        && approximately_equal(tint_slider.doubleValue, number_or(find_in_object(*settings, "whiteBalanceTint"), tint_slider.doubleValue), 1.0)
+        && approximately_equal(exposure_slider.doubleValue, number_or(find_in_object(*settings, "exposureSeconds"), exposure_slider.doubleValue), 0.0005)
+        && approximately_equal(iso_slider.doubleValue, number_or(find_in_object(*settings, "iso"), iso_slider.doubleValue), 1.0)
+        && approximately_equal(ev_slider.doubleValue, number_or(find_in_object(*settings, "exposureBias"), ev_slider.doubleValue), 0.02)
+        && approximately_equal(zoom_slider.doubleValue, number_or(find_in_object(*settings, "zoomFactor"), zoom_slider.doubleValue), 0.02)
+        && approximately_equal(lens_slider.doubleValue, number_or(find_in_object(*settings, "lensPosition"), lens_slider.doubleValue), 0.02);
 }
 
 std::string make_model_id_from_path(const std::string& path) {
@@ -341,10 +827,41 @@ std::string make_model_id_from_path(const std::string& path) {
     return output.empty() ? "model" : output;
 }
 
-void replace_popup_items(NSPopUpButton* popup, const std::vector<std::string>& items) {
+void configure_popup_items(NSPopUpButton* popup, const std::vector<PopupOption>& items) {
     [popup removeAllItems];
     for (const auto& item : items) {
-        [popup addItemWithTitle:to_ns_string(item)];
+        [popup addItemWithTitle:to_ns_string(item.title)];
+        popup.lastItem.representedObject = to_ns_string(item.value);
+    }
+}
+
+std::string popup_selected_value(NSPopUpButton* popup) {
+    if (popup == nil || popup.selectedItem == nil) {
+        return {};
+    }
+
+    if ([popup.selectedItem.representedObject isKindOfClass:[NSString class]]) {
+        return to_std_string((NSString*)popup.selectedItem.representedObject);
+    }
+
+    return to_std_string(popup.selectedItem.title);
+}
+
+void select_popup_value(NSPopUpButton* popup, const std::string& value) {
+    if (popup == nil) {
+        return;
+    }
+
+    NSString* target = to_ns_string(value);
+    for (NSMenuItem* item in popup.itemArray) {
+        if ([item.representedObject isKindOfClass:[NSString class]] && [(NSString*)item.representedObject isEqualToString:target]) {
+            [popup selectItem:item];
+            return;
+        }
+    }
+
+    if (popup.numberOfItems > 0) {
+        [popup selectItemAtIndex:0];
     }
 }
 
@@ -407,7 +924,7 @@ std::string network_digest(const DeviceSnapshot& snapshot) {
     if (!snapshot.host.empty()) {
         return snapshot.host + ":" + std::to_string(snapshot.port);
     }
-    return "n/a";
+    return "未就绪";
 }
 
 std::string models_digest(const DeviceSnapshot& snapshot) {
@@ -429,42 +946,46 @@ std::string models_digest(const DeviceSnapshot& snapshot) {
     }
 
     if (!active_models.empty()) {
-        return "active=" + join_strings(active_models, ", ") + (installed_models.empty() ? "" : (" | installed=" + std::to_string(installed_models.size())));
+        return "启用=" + join_strings(active_models, ", ") + (installed_models.empty() ? "" : (" | 已安装=" + std::to_string(installed_models.size())));
     }
 
     if (!installed_models.empty()) {
-        return "installed=" + join_strings(installed_models, ", ");
+        return "已安装=" + join_strings(installed_models, ", ");
     }
 
-    return "no models reported";
+    return "未上报模型";
 }
 
 std::string capability_digest(const DeviceSnapshot& snapshot) {
     if (!snapshot.capabilities_payload.is_object()) {
-        return "capabilities pending";
+        return "能力信息待获取";
     }
 
     const auto* capabilities = find_in_object(snapshot.capabilities_payload, "capabilities");
     if (capabilities == nullptr || !capabilities->is_object()) {
-        return "capabilities pending";
+        return "能力信息待获取";
     }
 
     std::vector<std::string> items;
     if (const auto supported_lenses = string_array_or_empty(find_in_object(*capabilities, "supportedLenses")); !supported_lenses.empty()) {
-        items.push_back("lenses=" + join_strings(supported_lenses, ", "));
+        std::vector<std::string> localized_lenses;
+        for (const auto& lens : supported_lenses) {
+            localized_lenses.push_back(localized_lens_name(lens));
+        }
+        items.push_back("镜头=" + join_strings(localized_lenses, ", "));
     }
 
     if (const auto* frame_rate = find_in_object(*capabilities, "frameRate"); frame_rate != nullptr && frame_rate->is_object()) {
         items.push_back(
-            "fps=" + format_number(number_or(find_in_object(*frame_rate, "min"), 0.0), 0)
+            "帧率=" + format_number(number_or(find_in_object(*frame_rate, "min"), 0.0), 0)
             + "…"
             + format_number(number_or(find_in_object(*frame_rate, "max"), 0.0), 0)
         );
     }
 
-    items.push_back("flash=" + bool_text(bool_or(find_in_object(*capabilities, "supportsFlash"), false)));
-    items.push_back("smoothAF=" + bool_text(bool_or(find_in_object(*capabilities, "supportsSmoothAutoFocus"), false)));
-    items.push_back("proRes=" + bool_text(bool_or(find_in_object(*capabilities, "supportsProRes"), false)));
+    items.push_back("闪光灯=" + bool_text(bool_or(find_in_object(*capabilities, "supportsFlash"), false)));
+    items.push_back("平滑对焦=" + bool_text(bool_or(find_in_object(*capabilities, "supportsSmoothAutoFocus"), false)));
+    items.push_back("ProRes=" + bool_text(bool_or(find_in_object(*capabilities, "supportsProRes"), false)));
     return join_strings(items, " | ");
 }
 
@@ -487,9 +1008,54 @@ std::string compact_path(const std::string& path) {
     return path.substr(0, 24) + " … " + path.substr(path.size() - 64);
 }
 
+std::vector<std::filesystem::path> recent_media_paths_for_device(const DeviceSnapshot& snapshot, std::size_t limit = 24) {
+    std::vector<std::filesystem::path> paths;
+    if (snapshot.device_id.empty()) {
+        return paths;
+    }
+
+    const std::filesystem::path root = vino::desktop::media_root_for_device(snapshot.device_id);
+    std::error_code error;
+    if (!std::filesystem::exists(root, error)) {
+        return paths;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (error) {
+            break;
+        }
+        if (entry.is_regular_file(error)) {
+            paths.push_back(entry.path());
+        }
+    }
+
+    std::sort(paths.begin(), paths.end(), [](const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+        std::error_code lhs_error;
+        std::error_code rhs_error;
+        const auto lhs_time = std::filesystem::last_write_time(lhs, lhs_error);
+        const auto rhs_time = std::filesystem::last_write_time(rhs, rhs_error);
+
+        if (lhs_error || rhs_error) {
+            return lhs.filename().string() > rhs.filename().string();
+        }
+
+        return lhs_time > rhs_time;
+    });
+
+    if (paths.size() > limit) {
+        paths.resize(limit);
+    }
+
+    return paths;
+}
+
+std::string log_entry_text(const UiLogEntry& entry) {
+    return "[" + entry.timestamp + "] " + entry.level + " " + entry.message;
+}
+
 std::string inference_digest(const DeviceSnapshot& snapshot) {
     if (!snapshot.inference_payload.is_object()) {
-        return "inference pending";
+        return "推理待命";
     }
 
     const auto* detections_value = find_in_object(snapshot.inference_payload, "detections");
@@ -501,12 +1067,12 @@ std::string inference_digest(const DeviceSnapshot& snapshot) {
         : 0;
 
     std::ostringstream stream;
-    stream << "detections=" << detection_count;
+    stream << "目标=" << detection_count;
     if (latency_value != nullptr && latency_value->is_number()) {
-        stream << " | latency=" << format_number(latency_value->as_number(), 2) << " ms";
+        stream << " | 延迟=" << format_number(latency_value->as_number(), 2) << " ms";
     }
     if (frame_value != nullptr && frame_value->is_number()) {
-        stream << " | frame=" << static_cast<int>(frame_value->as_number());
+        stream << " | 帧=" << static_cast<int>(frame_value->as_number());
     }
 
     if (detections_value != nullptr && detections_value->is_array() && !detections_value->as_array().empty()) {
@@ -546,11 +1112,11 @@ std::string transfer_digest(const ModelTransferSnapshot& transfer) {
         << transfer.device_id
         << " | " << transfer.model_id
         << " | " << format_number(progress, 1) << "%"
-        << " | " << transfer.stage
-        << " | local=" << transfer.local_status
-        << " | remote=" << (transfer.remote_status.empty() ? "pending" : transfer.remote_status)
-        << " | chunks " << transfer.chunks_sent << "/" << transfer.chunk_count
-        << " ack " << transfer.chunks_acked;
+        << " | " << localized_transfer_stage(transfer.stage)
+        << " | 本地=" << localized_transfer_status(transfer.local_status)
+        << " | 设备=" << localized_transfer_status(transfer.remote_status.empty() ? "pending" : transfer.remote_status)
+        << " | 分块 " << transfer.chunks_sent << "/" << transfer.chunk_count
+        << " | 已确认 " << transfer.chunks_acked;
 
     if (!transfer.remote_message.empty()) {
         stream << "\n  " << transfer.remote_message;
@@ -561,23 +1127,24 @@ std::string transfer_digest(const ModelTransferSnapshot& transfer) {
 std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     std::ostringstream stream;
     stream
-        << "DEVICE\n"
-        << "id=" << snapshot.device_id << "\n"
-        << "alias=" << snapshot.alias << "\n"
-        << "host=" << snapshot.host << ":" << snapshot.port << "\n"
-        << "online=" << (snapshot.online ? "true" : "false") << "\n"
-        << "lastSeen=" << snapshot.last_seen << "\n"
-        << "lastMessage=" << snapshot.last_message << "\n\n"
-        << "lastMediaPath=" << snapshot.last_media_path << "\n"
-        << "lastMediaCategory=" << snapshot.last_media_category << "\n"
-        << "lastMediaSeen=" << snapshot.last_media_seen << "\n\n"
-        << "previewFrameIndex=" << snapshot.preview_frame_index << "\n"
-        << "previewSize=" << snapshot.preview_image_width << "x" << snapshot.preview_image_height << "\n"
-        << "previewSeen=" << snapshot.preview_seen << "\n\n"
-        << stringify_block("HELLO", snapshot.hello_payload)
-        << stringify_block("STATUS", snapshot.status_payload)
-        << stringify_block("CAPABILITIES", snapshot.capabilities_payload)
-        << stringify_block("INFERENCE", snapshot.inference_payload);
+        << "设备快照\n"
+        << "设备ID=" << snapshot.device_id << "\n"
+        << "别名=" << snapshot.alias << "\n"
+        << "主机=" << snapshot.host << ":" << snapshot.port << "\n"
+        << "在线=" << (snapshot.online ? "是" : "否") << "\n"
+        << "最后活跃=" << last_active_text(snapshot) << "\n"
+        << "最后时间=" << snapshot.last_seen << "\n"
+        << "最后消息=" << snapshot.last_message << "\n\n"
+        << "最近媒体路径=" << snapshot.last_media_path << "\n"
+        << "最近媒体类别=" << snapshot.last_media_category << "\n"
+        << "最近媒体时间=" << snapshot.last_media_seen << "\n\n"
+        << "预览帧序号=" << snapshot.preview_frame_index << "\n"
+        << "预览尺寸=" << snapshot.preview_image_width << "x" << snapshot.preview_image_height << "\n"
+        << "预览时间=" << snapshot.preview_seen << "\n\n"
+        << stringify_block("握手", snapshot.hello_payload)
+        << stringify_block("状态", snapshot.status_payload)
+        << stringify_block("能力", snapshot.capabilities_payload)
+        << stringify_block("推理", snapshot.inference_payload);
 
     return stream.str();
 }
@@ -591,7 +1158,13 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     std::unique_ptr<DesktopRuntime> _runtime;
     std::vector<DeviceSnapshot> _devices;
     std::string _selectedDeviceId;
+    std::string _lastControlSyncSignature;
+    std::string _pendingControlDeviceId;
+    std::string _latestTransferDigest;
     NSUInteger _lastLogCount;
+    bool _controlDraftDirty;
+    bool _controlApplyPending;
+    std::chrono::steady_clock::time_point _controlApplyStartedAt;
 
     NSWindow* _window;
     NSTableView* _tableView;
@@ -607,9 +1180,11 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSTextField* _scanStartField;
     NSTextField* _scanEndField;
     NSTextField* _bonjourLabel;
+    NSTextField* _fleetStatusLabel;
     NSPopUpButton* _bonjourPopup;
 
     NSTextField* _summaryLabel;
+    NSTextField* _controlStatusLabel;
     NSTextField* _networkLabel;
     NSTextField* _capabilityLabel;
     NSTextField* _modelsLabel;
@@ -620,12 +1195,17 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSTextField* _productField;
     NSTextField* _pointField;
     NSTextField* _jobField;
-    NSTextField* _remotePostField;
+    NSTextField* _archiveLabel;
+    NSTextField* _terminalSearchField;
+    NSTextField* _terminalStatsLabel;
 
     NSPopUpButton* _modePopup;
     NSPopUpButton* _focusPopup;
     NSPopUpButton* _lensPopup;
     NSPopUpButton* _profilePopup;
+    NSPopUpButton* _archivePopup;
+    NSPopUpButton* _terminalLevelPopup;
+    NSPopUpButton* _terminalScopePopup;
 
     NSSlider* _fpsSlider;
     NSTextField* _fpsValue;
@@ -653,6 +1233,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSTimer* _refreshTimer;
     NSNetServiceBrowser* _serviceBrowser;
     NSMutableDictionary<NSString*, NSNetService*>* _bonjourServices;
+    std::vector<std::string> _archivePaths;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
@@ -661,6 +1242,9 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _runtime = std::make_unique<DesktopRuntime>();
     _runtime->start();
     _bonjourServices = [[NSMutableDictionary alloc] init];
+    _controlDraftDirty = false;
+    _controlApplyPending = false;
+    _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
 
     [self buildWindow];
     [self startBonjourDiscovery];
@@ -690,14 +1274,26 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 }
 
 - (void)buildWindow {
-    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(120.0, 120.0, 1520.0, 940.0)
+    const CGFloat default_width = 1366.0;
+    const CGFloat default_height = 540.0;
+    NSScreen* main_screen = NSScreen.mainScreen;
+    NSRect visible_frame = main_screen != nil ? main_screen.visibleFrame : NSMakeRect(0.0, 0.0, default_width, default_height);
+    const CGFloat content_width = std::min(default_width, std::max<CGFloat>(1200.0, visible_frame.size.width - 18.0));
+    const CGFloat content_height = std::min(default_height, std::max<CGFloat>(520.0, visible_frame.size.height - 44.0));
+    const NSRect content_rect = NSMakeRect(
+        std::round(NSMidX(visible_frame) - content_width * 0.5),
+        std::round(NSMidY(visible_frame) - content_height * 0.5),
+        content_width,
+        content_height
+    );
+
+    _window = [[NSWindow alloc] initWithContentRect:content_rect
                                           styleMask:(NSWindowStyleMaskTitled |
                                                      NSWindowStyleMaskClosable |
-                                                     NSWindowStyleMaskMiniaturizable |
-                                                     NSWindowStyleMaskResizable)
+                                                     NSWindowStyleMaskMiniaturizable)
                                             backing:NSBackingStoreBuffered
                                               defer:NO];
-    _window.title = @"vino Desktop";
+    _window.title = @"vino 工业控制台 · 紧凑布局 B10";
     _window.backgroundColor = hex_color(0x050608);
 
     NSView* content = _window.contentView;
@@ -712,13 +1308,13 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     [content addSubview:rootSplit];
 
     [NSLayoutConstraint activateConstraints:@[
-        [rootSplit.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:10.0],
-        [rootSplit.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-10.0],
-        [rootSplit.topAnchor constraintEqualToAnchor:content.topAnchor constant:10.0],
-        [rootSplit.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-10.0]
+        [rootSplit.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:8.0],
+        [rootSplit.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-8.0],
+        [rootSplit.topAnchor constraintEqualToAnchor:content.topAnchor constant:8.0],
+        [rootSplit.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-8.0]
     ]];
 
-    NSSplitView* topSplit = [[NSSplitView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1400.0, 660.0)];
+    NSSplitView* topSplit = [[NSSplitView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1340.0, 448.0)];
     topSplit.vertical = YES;
     topSplit.dividerStyle = NSSplitViewDividerStyleThin;
 
@@ -733,56 +1329,96 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     [rootSplit addSubview:topSplit];
     [rootSplit addSubview:terminalPanel];
 
-    [rootSplit setPosition:660.0 ofDividerAtIndex:0];
-    [topSplit setPosition:310.0 ofDividerAtIndex:0];
-    [topSplit setPosition:1080.0 ofDividerAtIndex:1];
+    for (NSView* view in @[leftPanel, centerPanel, rightPanel, terminalPanel, topSplit, rootSplit]) {
+        relax_vertical_layout(view);
+    }
+
+    [rootSplit setPosition:446.0 ofDividerAtIndex:0];
+    [topSplit setPosition:210.0 ofDividerAtIndex:0];
+    [topSplit setPosition:1082.0 ofDividerAtIndex:1];
+
+    const NSRect frame_rect = [_window frameRectForContentRect:content_rect];
+    _window.minSize = frame_rect.size;
+    _window.maxSize = frame_rect.size;
+    _window.contentMinSize = NSMakeSize(content_width, content_height);
+    _window.contentMaxSize = NSMakeSize(content_width, content_height);
+    [_window setFrame:frame_rect display:NO];
+    [_window setContentSize:NSMakeSize(content_width, content_height)];
 
     [_window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_window setFrame:frame_rect display:YES];
+        [_window setContentSize:NSMakeSize(content_width, content_height)];
+    });
+}
+
+- (void)updateFleetStatusMessage:(const std::string&)message {
+    if (_fleetStatusLabel != nil) {
+        _fleetStatusLabel.stringValue = to_ns_string(message);
+    }
+}
+
+- (std::vector<std::string>)resolvedScanPrefixes {
+    return scan_prefixes_from_input(to_std_string(_scanPrefixField.stringValue));
 }
 
 - (NSView*)buildFleetPanel {
-    _hostField = make_input(@"192.168.31.25");
-    _hostField.stringValue = @"192.168.31.25";
+    const std::vector<std::string> local_prefixes = local_ipv4_prefixes();
+    const std::string prefix_hint = local_prefixes.empty() ? std::string {"自动"} : ("自动 · " + join_strings(local_prefixes, " / "));
 
-    _scanPrefixField = make_input(@"192.168.31");
-    _scanPrefixField.stringValue = @"192.168.31";
+    _hostField = make_input(@"输入 IP 或 IP:端口");
+    _hostField.stringValue = @"";
+
+    _scanPrefixField = make_input(to_ns_string(prefix_hint));
+    _scanPrefixField.stringValue = @"自动";
     _scanStartField = make_input(@"1");
-    _scanStartField.stringValue = @"20";
+    _scanStartField.stringValue = @"1";
     _scanEndField = make_input(@"254");
-    _scanEndField.stringValue = @"40";
+    _scanEndField.stringValue = @"254";
     _bonjourPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _bonjourPopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [_bonjourPopup addItemWithTitle:@"Bonjour scanning…"];
+    style_popup(_bonjourPopup);
+    [_bonjourPopup addItemWithTitle:@"Bonjour 扫描中…"];
     _bonjourPopup.enabled = NO;
-    _bonjourLabel = make_label(@"Bonjour idle", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _bonjourLabel = make_label(@"Bonjour 待命", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _bonjourLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _fleetStatusLabel = make_label(
+        to_ns_string(local_prefixes.empty()
+            ? "连接：请输入 iPhone 的 IP。扫描：留空或输入“自动”时会尝试本机可用 IPv4 网段。"
+            : ("连接：请输入 iPhone 的 IP 或 IP:端口。扫描候选：" + join_strings(local_prefixes, " · ") + ".*")),
+        11.0,
+        NSFontWeightRegular,
+        hex_color(0xA8B7C2)
+    );
+    _fleetStatusLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    _fleetStatusLabel.maximumNumberOfLines = 2;
 
-    NSButton* connectButton = make_button(@"Connect", self, @selector(connectPressed:));
-    NSButton* scanButton = make_button(@"Scan", self, @selector(scanPressed:));
-    NSButton* bonjourButton = make_button(@"Bonjour", self, @selector(connectBonjourPressed:));
-    NSButton* bonjourRefreshButton = make_button(@"Refresh", self, @selector(refreshBonjourPressed:));
+    NSButton* connectButton = make_button(@"连接", self, @selector(connectPressed:));
+    NSButton* scanButton = make_button(@"扫描", self, @selector(scanPressed:));
+    NSButton* bonjourButton = make_button(@"连接 Bonjour", self, @selector(connectBonjourPressed:));
+    NSButton* bonjourRefreshButton = make_button(@"刷新", self, @selector(refreshBonjourPressed:));
 
-    NSStackView* connectRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 10.0);
+    NSStackView* connectRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [connectRow addArrangedSubview:_hostField];
     [connectRow addArrangedSubview:connectButton];
-    [connectButton.widthAnchor constraintEqualToConstant:94.0].active = YES;
+    [connectRow addArrangedSubview:scanButton];
+    [connectButton.widthAnchor constraintEqualToConstant:78.0].active = YES;
+    [scanButton.widthAnchor constraintEqualToConstant:68.0].active = YES;
 
     NSStackView* scanRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [scanRow addArrangedSubview:_scanPrefixField];
     [scanRow addArrangedSubview:_scanStartField];
     [scanRow addArrangedSubview:_scanEndField];
-    [scanRow addArrangedSubview:scanButton];
     [_scanStartField.widthAnchor constraintEqualToConstant:52.0].active = YES;
     [_scanEndField.widthAnchor constraintEqualToConstant:52.0].active = YES;
-    [scanButton.widthAnchor constraintEqualToConstant:80.0].active = YES;
+    [_scanPrefixField.widthAnchor constraintGreaterThanOrEqualToConstant:92.0].active = YES;
 
     NSStackView* bonjourRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [bonjourRow addArrangedSubview:_bonjourPopup];
     [bonjourRow addArrangedSubview:bonjourButton];
     [bonjourRow addArrangedSubview:bonjourRefreshButton];
-    [bonjourButton.widthAnchor constraintEqualToConstant:88.0].active = YES;
-    [bonjourRefreshButton.widthAnchor constraintEqualToConstant:82.0].active = YES;
+    [bonjourButton.widthAnchor constraintEqualToConstant:90.0].active = YES;
+    [bonjourRefreshButton.widthAnchor constraintEqualToConstant:58.0].active = YES;
 
     NSScrollView* tableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
     tableScroll.translatesAutoresizingMaskIntoConstraints = NO;
@@ -796,7 +1432,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     _tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
     _tableView.headerView = nil;
-    _tableView.rowHeight = 28.0;
+    _tableView.rowHeight = 22.0;
     _tableView.delegate = self;
     _tableView.dataSource = self;
     _tableView.backgroundColor = hex_color(0x050608, 0.9);
@@ -805,73 +1441,88 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _tableView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleRegular;
 
     NSTableColumn* aliasColumn = [[NSTableColumn alloc] initWithIdentifier:@"alias"];
-    aliasColumn.width = 150.0;
+    aliasColumn.width = 90.0;
     NSTableColumn* stateColumn = [[NSTableColumn alloc] initWithIdentifier:@"state"];
-    stateColumn.width = 54.0;
+    stateColumn.width = 78.0;
     NSTableColumn* endpointColumn = [[NSTableColumn alloc] initWithIdentifier:@"endpoint"];
-    endpointColumn.width = 120.0;
+    endpointColumn.width = 104.0;
 
     [_tableView addTableColumn:aliasColumn];
     [_tableView addTableColumn:stateColumn];
     [_tableView addTableColumn:endpointColumn];
 
     tableScroll.documentView = _tableView;
-    [tableScroll.heightAnchor constraintGreaterThanOrEqualToConstant:300.0].active = YES;
+    [tableScroll.heightAnchor constraintGreaterThanOrEqualToConstant:132.0].active = YES;
 
-    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 10.0);
+    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
     [body addArrangedSubview:connectRow];
     [body addArrangedSubview:scanRow];
+    [body addArrangedSubview:_fleetStatusLabel];
     [body addArrangedSubview:bonjourRow];
     [body addArrangedSubview:_bonjourLabel];
     [body addArrangedSubview:tableScroll];
 
-    return make_panel(@"FLEET", body);
+    return make_panel(@"设备墙", body);
 }
 
 - (NSView*)buildWorkspacePanel {
-    _summaryLabel = make_label(@"no device selected", 12.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _summaryLabel = make_label(@"未选择设备", 12.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _summaryLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _summaryLabel.maximumNumberOfLines = 4;
+    _summaryLabel.maximumNumberOfLines = 2;
+    _controlStatusLabel = make_label(@"参数状态：未选择设备", 12.0, NSFontWeightSemibold, hex_color(0xA8B7C2));
+    _controlStatusLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    _controlStatusLabel.maximumNumberOfLines = 1;
 
-    _productField = make_input(@"Product UUID");
-    _pointField = make_input(@"Point Index", @"0");
-    _jobField = make_input(@"Job ID");
-    _remotePostField = make_input(@"Remote POST URL");
+    _productField = make_input(@"产品 UUID");
+    _pointField = make_input(@"点位号", @"0");
+    _jobField = make_input(@"任务 ID");
+    _archiveLabel = make_label(@"归档：未选择设备", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _archiveLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    _archivePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    style_popup(_archivePopup);
+    [_archivePopup addItemWithTitle:@"暂无媒体"];
+    _archivePopup.enabled = NO;
 
     _modePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _modePopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [_modePopup addItemsWithTitles:@[@"photo", @"stream"]];
+    style_popup(_modePopup);
+    configure_popup_items(_modePopup, capture_mode_options());
     _modePopup.target = self;
     _modePopup.action = @selector(controlChanged:);
+    select_popup_value(_modePopup, "photo");
 
     _focusPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _focusPopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [_focusPopup addItemsWithTitles:@[@"continuousAuto", @"locked"]];
+    style_popup(_focusPopup);
+    configure_popup_items(_focusPopup, focus_mode_options());
     _focusPopup.target = self;
     _focusPopup.action = @selector(controlChanged:);
+    select_popup_value(_focusPopup, "continuousAuto");
 
     _lensPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _lensPopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [_lensPopup addItemsWithTitles:@[@"wide", @"ultraWide", @"telephoto"]];
+    style_popup(_lensPopup);
+    configure_popup_items(_lensPopup, lens_options());
     _lensPopup.target = self;
     _lensPopup.action = @selector(controlChanged:);
+    select_popup_value(_lensPopup, "wide");
 
     _profilePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _profilePopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [_profilePopup addItemsWithTitles:@[@"h264", @"hevc", @"proRes"]];
+    style_popup(_profilePopup);
+    configure_popup_items(_profilePopup, recording_profile_options());
     _profilePopup.target = self;
     _profilePopup.action = @selector(controlChanged:);
+    select_popup_value(_profilePopup, "hevc");
 
-    _flashToggle = make_toggle(@"Flash", self, @selector(togglePressed:));
-    _inferenceToggle = make_toggle(@"Inference", self, @selector(togglePressed:));
-    _persistToggle = make_toggle(@"Store Media", self, @selector(togglePressed:));
-    _smoothAFToggle = make_toggle(@"Smooth AF", self, @selector(togglePressed:));
+    _flashToggle = make_toggle(@"闪光灯", self, @selector(togglePressed:));
+    _inferenceToggle = make_toggle(@"推理", self, @selector(togglePressed:));
+    _persistToggle = make_toggle(@"保存媒体", self, @selector(togglePressed:));
+    _smoothAFToggle = make_toggle(@"平滑对焦", self, @selector(togglePressed:));
 
-    NSButton* applyButton = make_button(@"Apply Patch", self, @selector(applyPatchPressed:));
-    NSButton* photoButton = make_button(@"Trigger Photo", self, @selector(photoPressed:));
-    NSButton* startRecordButton = make_button(@"Start Record", self, @selector(startRecordPressed:));
-    NSButton* stopRecordButton = make_button(@"Stop Record", self, @selector(stopRecordPressed:));
-    NSButton* capsButton = make_button(@"Fetch Caps", self, @selector(fetchCapabilitiesPressed:));
+    NSButton* applyButton = make_button(@"应用参数", self, @selector(applyPatchPressed:));
+    NSButton* photoButton = make_button(@"执行拍照", self, @selector(photoPressed:));
+    NSButton* startRecordButton = make_button(@"开始录像", self, @selector(startRecordPressed:));
+    NSButton* stopRecordButton = make_button(@"停止录像", self, @selector(stopRecordPressed:));
+    NSButton* capsButton = make_button(@"读取能力", self, @selector(fetchCapabilitiesPressed:));
+    NSButton* openArchiveButton = make_button(@"打开媒体", self, @selector(openArchivePressed:));
+    NSButton* revealArchiveButton = make_button(@"定位文件", self, @selector(revealArchivePressed:));
 
     NSView* preview = make_preview_surface(&_previewImageView, &_previewTitleLabel, &_previewSubtitleLabel);
 
@@ -879,159 +1530,257 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     [contextRow addArrangedSubview:_productField];
     [contextRow addArrangedSubview:_pointField];
     [contextRow addArrangedSubview:_jobField];
-    [_pointField.widthAnchor constraintEqualToConstant:78.0].active = YES;
-    [_jobField.widthAnchor constraintEqualToConstant:126.0].active = YES;
+    [_pointField.widthAnchor constraintEqualToConstant:72.0].active = YES;
+    [_jobField.widthAnchor constraintEqualToConstant:104.0].active = YES;
+
+    NSStackView* archiveRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    [archiveRow addArrangedSubview:_archivePopup];
+    [archiveRow addArrangedSubview:openArchiveButton];
+    [archiveRow addArrangedSubview:revealArchiveButton];
+    [openArchiveButton.widthAnchor constraintEqualToConstant:78.0].active = YES;
+    [revealArchiveButton.widthAnchor constraintEqualToConstant:68.0].active = YES;
 
     NSStackView* modeRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
-    [modeRow addArrangedSubview:make_label(@"Mode", 12.0, NSFontWeightSemibold)];
+    [modeRow addArrangedSubview:make_label(@"模式", 11.0, NSFontWeightSemibold)];
     [modeRow addArrangedSubview:_modePopup];
-    [modeRow addArrangedSubview:make_label(@"Focus", 12.0, NSFontWeightSemibold)];
+    [modeRow addArrangedSubview:make_label(@"对焦", 11.0, NSFontWeightSemibold)];
     [modeRow addArrangedSubview:_focusPopup];
-    [_modePopup.widthAnchor constraintEqualToConstant:120.0].active = YES;
-    [_focusPopup.widthAnchor constraintEqualToConstant:140.0].active = YES;
+    [_modePopup.widthAnchor constraintEqualToConstant:100.0].active = YES;
+    [_focusPopup.widthAnchor constraintEqualToConstant:110.0].active = YES;
 
     NSStackView* opticsRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
-    [opticsRow addArrangedSubview:make_label(@"Lens", 12.0, NSFontWeightSemibold)];
+    [opticsRow addArrangedSubview:make_label(@"镜头", 11.0, NSFontWeightSemibold)];
     [opticsRow addArrangedSubview:_lensPopup];
-    [opticsRow addArrangedSubview:make_label(@"Profile", 12.0, NSFontWeightSemibold)];
+    [opticsRow addArrangedSubview:make_label(@"编码", 11.0, NSFontWeightSemibold)];
     [opticsRow addArrangedSubview:_profilePopup];
-    [_lensPopup.widthAnchor constraintEqualToConstant:140.0].active = YES;
-    [_profilePopup.widthAnchor constraintEqualToConstant:120.0].active = YES;
+    [_lensPopup.widthAnchor constraintEqualToConstant:110.0].active = YES;
+    [_profilePopup.widthAnchor constraintEqualToConstant:100.0].active = YES;
 
-    NSStackView* togglesRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 12.0);
-    [togglesRow addArrangedSubview:_flashToggle];
-    [togglesRow addArrangedSubview:_smoothAFToggle];
-    [togglesRow addArrangedSubview:_inferenceToggle];
-    [togglesRow addArrangedSubview:_persistToggle];
+    NSStackView* togglesTopRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    togglesTopRow.distribution = NSStackViewDistributionFillEqually;
+    [togglesTopRow addArrangedSubview:_flashToggle];
+    [togglesTopRow addArrangedSubview:_smoothAFToggle];
 
-    NSStackView* buttonsRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
-    [buttonsRow addArrangedSubview:applyButton];
-    [buttonsRow addArrangedSubview:photoButton];
-    [buttonsRow addArrangedSubview:startRecordButton];
-    [buttonsRow addArrangedSubview:stopRecordButton];
-    [buttonsRow addArrangedSubview:capsButton];
+    NSStackView* togglesBottomRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    togglesBottomRow.distribution = NSStackViewDistributionFillEqually;
+    [togglesBottomRow addArrangedSubview:_inferenceToggle];
+    [togglesBottomRow addArrangedSubview:_persistToggle];
 
-    NSView* fpsRow = make_slider_row(@"FPS", &_fpsSlider, &_fpsValue, self, @selector(sliderChanged:), 1.0, 60.0);
-    NSView* temperatureRow = make_slider_row(@"Temp", &_temperatureSlider, &_temperatureValue, self, @selector(sliderChanged:), 2800.0, 8000.0);
-    NSView* tintRow = make_slider_row(@"Tint", &_tintSlider, &_tintValue, self, @selector(sliderChanged:), -150.0, 150.0);
-    NSView* exposureRow = make_slider_row(@"Exposure", &_exposureSlider, &_exposureValue, self, @selector(sliderChanged:), 0.0001, 0.5);
+    NSStackView* actionRowTop = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    actionRowTop.distribution = NSStackViewDistributionFillEqually;
+    [actionRowTop addArrangedSubview:applyButton];
+    [actionRowTop addArrangedSubview:capsButton];
+    [actionRowTop addArrangedSubview:photoButton];
+
+    NSStackView* actionRowBottom = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    actionRowBottom.distribution = NSStackViewDistributionFillEqually;
+    [actionRowBottom addArrangedSubview:startRecordButton];
+    [actionRowBottom addArrangedSubview:stopRecordButton];
+
+    NSView* fpsRow = make_slider_row(@"帧率", &_fpsSlider, &_fpsValue, self, @selector(sliderChanged:), 1.0, 60.0);
+    NSView* temperatureRow = make_slider_row(@"色温", &_temperatureSlider, &_temperatureValue, self, @selector(sliderChanged:), 2800.0, 8000.0);
+    NSView* tintRow = make_slider_row(@"色调", &_tintSlider, &_tintValue, self, @selector(sliderChanged:), -150.0, 150.0);
+    NSView* exposureRow = make_slider_row(@"曝光时间", &_exposureSlider, &_exposureValue, self, @selector(sliderChanged:), 0.0001, 0.5);
     NSView* isoRow = make_slider_row(@"ISO", &_isoSlider, &_isoValue, self, @selector(sliderChanged:), 20.0, 1600.0);
     NSView* evRow = make_slider_row(@"EV", &_evSlider, &_evValue, self, @selector(sliderChanged:), -8.0, 8.0);
-    NSView* zoomRow = make_slider_row(@"Zoom", &_zoomSlider, &_zoomValue, self, @selector(sliderChanged:), 1.0, 15.0);
-    NSView* lensRow = make_slider_row(@"Lens Position", &_lensSlider, &_lensValue, self, @selector(sliderChanged:), 0.0, 1.0);
+    NSView* zoomRow = make_slider_row(@"变焦", &_zoomSlider, &_zoomValue, self, @selector(sliderChanged:), 1.0, 15.0);
+    NSView* lensRow = make_slider_row(@"焦距位置", &_lensSlider, &_lensValue, self, @selector(sliderChanged:), 0.0, 1.0);
 
-    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 10.0);
-    [body addArrangedSubview:preview];
-    [body addArrangedSubview:_summaryLabel];
-    [body addArrangedSubview:contextRow];
-    [body addArrangedSubview:_remotePostField];
-    [body addArrangedSubview:modeRow];
-    [body addArrangedSubview:opticsRow];
-    [body addArrangedSubview:fpsRow];
-    [body addArrangedSubview:temperatureRow];
-    [body addArrangedSubview:tintRow];
-    [body addArrangedSubview:exposureRow];
-    [body addArrangedSubview:isoRow];
-    [body addArrangedSubview:evRow];
-    [body addArrangedSubview:zoomRow];
-    [body addArrangedSubview:lensRow];
-    [body addArrangedSubview:togglesRow];
-    [body addArrangedSubview:buttonsRow];
+    NSStackView* imagingRowTop = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    imagingRowTop.distribution = NSStackViewDistributionFillEqually;
+    [imagingRowTop addArrangedSubview:fpsRow];
+    [imagingRowTop addArrangedSubview:temperatureRow];
 
-    return make_panel(@"DEVICE WORKSPACE", body);
+    NSStackView* imagingRowBottom = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    imagingRowBottom.distribution = NSStackViewDistributionFillEqually;
+    [imagingRowBottom addArrangedSubview:tintRow];
+    [imagingRowBottom addArrangedSubview:exposureRow];
+
+    NSStackView* imagingCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 5.0);
+    [imagingCardBody addArrangedSubview:imagingRowTop];
+    [imagingCardBody addArrangedSubview:imagingRowBottom];
+
+    NSStackView* lensRowTop = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    lensRowTop.distribution = NSStackViewDistributionFillEqually;
+    [lensRowTop addArrangedSubview:isoRow];
+    [lensRowTop addArrangedSubview:evRow];
+
+    NSStackView* lensRowBottom = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    lensRowBottom.distribution = NSStackViewDistributionFillEqually;
+    [lensRowBottom addArrangedSubview:zoomRow];
+    [lensRowBottom addArrangedSubview:lensRow];
+
+    NSStackView* lensCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 5.0);
+    [lensCardBody addArrangedSubview:lensRowTop];
+    [lensCardBody addArrangedSubview:lensRowBottom];
+
+    NSStackView* leftCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
+    [leftCardBody addArrangedSubview:preview];
+    [leftCardBody addArrangedSubview:_summaryLabel];
+    [leftCardBody addArrangedSubview:contextRow];
+    [leftCardBody addArrangedSubview:archiveRow];
+    [leftCardBody addArrangedSubview:_archiveLabel];
+    NSView* leftCard = make_panel(@"预览 / 任务", leftCardBody);
+    [leftCard.widthAnchor constraintEqualToConstant:290.0].active = YES;
+
+    NSStackView* sliderGrid = make_stack(NSUserInterfaceLayoutOrientationVertical, 5.0);
+    [sliderGrid addArrangedSubview:imagingRowTop];
+    [sliderGrid addArrangedSubview:imagingRowBottom];
+    [sliderGrid addArrangedSubview:lensRowTop];
+    [sliderGrid addArrangedSubview:lensRowBottom];
+
+    NSStackView* rightCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 5.0);
+    [rightCardBody addArrangedSubview:_controlStatusLabel];
+    [rightCardBody addArrangedSubview:modeRow];
+    [rightCardBody addArrangedSubview:opticsRow];
+    [rightCardBody addArrangedSubview:togglesTopRow];
+    [rightCardBody addArrangedSubview:togglesBottomRow];
+    [rightCardBody addArrangedSubview:actionRowTop];
+    [rightCardBody addArrangedSubview:actionRowBottom];
+    [rightCardBody addArrangedSubview:sliderGrid];
+    NSView* rightCard = make_panel(@"采集 / 参数", rightCardBody);
+    [rightCard.widthAnchor constraintGreaterThanOrEqualToConstant:430.0].active = YES;
+
+    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    body.distribution = NSStackViewDistributionFill;
+    body.alignment = NSLayoutAttributeTop;
+    [body addArrangedSubview:leftCard];
+    [body addArrangedSubview:rightCard];
+
+    return make_panel(@"设备工作区", body);
 }
 
 - (NSView*)buildSidePanel {
-    _networkLabel = make_label(@"network: no device selected", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _networkLabel = make_label(@"网络：未选择设备", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _networkLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _networkLabel.maximumNumberOfLines = 3;
-    _capabilityLabel = make_label(@"capabilities: no device selected", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _networkLabel.maximumNumberOfLines = 1;
+    _capabilityLabel = make_label(@"能力：未选择设备", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _capabilityLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _capabilityLabel.maximumNumberOfLines = 4;
-    _modelsLabel = make_label(@"models: no device selected", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    _capabilityLabel.maximumNumberOfLines = 1;
+    _modelsLabel = make_label(@"模型：未选择设备", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _modelsLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _modelsLabel.maximumNumberOfLines = 4;
+    _modelsLabel.maximumNumberOfLines = 1;
 
-    _aliasField = make_input(@"Alias");
-    _modelField = make_input(@"Model ID");
-    _modelVersionField = make_input(@"Version", @"1.0.0");
-    _modelPathField = make_input(@"Model file path");
-    _activateAfterInstallToggle = make_toggle(@"Activate After Install", self, @selector(togglePressed:));
+    _aliasField = make_input(@"设备名称");
+    _modelField = make_input(@"模型 ID");
+    _modelVersionField = make_input(@"版本", @"1.0.0");
+    _modelPathField = make_input(@"模型文件路径");
+    _activateAfterInstallToggle = make_toggle(@"上传后启用", self, @selector(togglePressed:));
 
-    NSButton* aliasButton = make_button(@"Apply Alias", self, @selector(aliasPressed:));
-    NSButton* activateButton = make_button(@"Activate", self, @selector(activateModelPressed:));
-    NSButton* deactivateButton = make_button(@"Deactivate", self, @selector(deactivateModelPressed:));
-    NSButton* removeButton = make_button(@"Remove", self, @selector(removeModelPressed:));
-    NSButton* browseButton = make_button(@"Browse", self, @selector(openModelPressed:));
-    NSButton* uploadButton = make_button(@"Upload", self, @selector(uploadModelPressed:));
-    NSButton* uploadAllButton = make_button(@"Upload All", self, @selector(uploadModelAllPressed:));
-    NSButton* photoAllButton = make_button(@"Photo All Online", self, @selector(photoAllPressed:));
-    NSButton* aiOnButton = make_button(@"AI On All", self, @selector(aiOnAllPressed:));
-    NSButton* aiOffButton = make_button(@"AI Off All", self, @selector(aiOffAllPressed:));
+    NSButton* aliasButton = make_button(@"应用名称", self, @selector(aliasPressed:));
+    NSButton* activateButton = make_button(@"启用", self, @selector(activateModelPressed:));
+    NSButton* deactivateButton = make_button(@"停用", self, @selector(deactivateModelPressed:));
+    NSButton* removeButton = make_button(@"删除", self, @selector(removeModelPressed:));
+    NSButton* browseButton = make_button(@"选择文件", self, @selector(openModelPressed:));
+    NSButton* uploadButton = make_button(@"上传本机", self, @selector(uploadModelPressed:));
+    NSButton* uploadAllButton = make_button(@"上传全机", self, @selector(uploadModelAllPressed:));
+    NSButton* photoAllButton = make_button(@"全机拍照", self, @selector(photoAllPressed:));
+    NSButton* aiOnButton = make_button(@"全机推理", self, @selector(aiOnAllPressed:));
+    NSButton* aiOffButton = make_button(@"全机停推", self, @selector(aiOffAllPressed:));
 
     NSStackView* aliasRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [aliasRow addArrangedSubview:_aliasField];
     [aliasRow addArrangedSubview:aliasButton];
-    [aliasButton.widthAnchor constraintEqualToConstant:96.0].active = YES;
+    [aliasButton.widthAnchor constraintEqualToConstant:82.0].active = YES;
+
+    NSStackView* statusCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
+    [statusCardBody addArrangedSubview:_networkLabel];
+    [statusCardBody addArrangedSubview:_capabilityLabel];
+    [statusCardBody addArrangedSubview:_modelsLabel];
+    [statusCardBody addArrangedSubview:aliasRow];
 
     NSStackView* modelRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [modelRow addArrangedSubview:_modelField];
-    [modelRow addArrangedSubview:activateButton];
-    [modelRow addArrangedSubview:deactivateButton];
-    [modelRow addArrangedSubview:removeButton];
-    [activateButton.widthAnchor constraintEqualToConstant:84.0].active = YES;
-    [deactivateButton.widthAnchor constraintEqualToConstant:92.0].active = YES;
-    [removeButton.widthAnchor constraintEqualToConstant:76.0].active = YES;
-
-    NSStackView* modelMetaRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
-    [modelMetaRow addArrangedSubview:_modelVersionField];
-    [modelMetaRow addArrangedSubview:_activateAfterInstallToggle];
-    [_modelVersionField.widthAnchor constraintEqualToConstant:90.0].active = YES;
+    [modelRow addArrangedSubview:_modelVersionField];
+    [modelRow addArrangedSubview:_activateAfterInstallToggle];
+    [_modelVersionField.widthAnchor constraintEqualToConstant:64.0].active = YES;
 
     NSStackView* modelPathRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     [modelPathRow addArrangedSubview:_modelPathField];
-    [modelPathRow addArrangedSubview:browseButton];
-    [modelPathRow addArrangedSubview:uploadButton];
-    [modelPathRow addArrangedSubview:uploadAllButton];
-    [browseButton.widthAnchor constraintEqualToConstant:74.0].active = YES;
-    [uploadButton.widthAnchor constraintEqualToConstant:74.0].active = YES;
-    [uploadAllButton.widthAnchor constraintEqualToConstant:88.0].active = YES;
+
+    NSStackView* modelActionRowTop = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    modelActionRowTop.distribution = NSStackViewDistributionFillEqually;
+    [modelActionRowTop addArrangedSubview:activateButton];
+    [modelActionRowTop addArrangedSubview:deactivateButton];
+    [modelActionRowTop addArrangedSubview:removeButton];
+
+    NSStackView* modelActionRowBottom = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    modelActionRowBottom.distribution = NSStackViewDistributionFillEqually;
+    [modelActionRowBottom addArrangedSubview:browseButton];
+    [modelActionRowBottom addArrangedSubview:uploadButton];
+    [modelActionRowBottom addArrangedSubview:uploadAllButton];
 
     NSStackView* batchRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    batchRow.distribution = NSStackViewDistributionFillEqually;
     [batchRow addArrangedSubview:photoAllButton];
     [batchRow addArrangedSubview:aiOnButton];
     [batchRow addArrangedSubview:aiOffButton];
 
-    NSTextField* gatewayLabel = make_label(@"gateway :: POST /api/v1/batch  |  GET /api/v1/devices  |  :49020", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
+    NSTextField* gatewayLabel = make_label(@"网关：/api/v1/batch ｜ /api/v1/devices ｜ 49020", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     gatewayLabel.lineBreakMode = NSLineBreakByWordWrapping;
     gatewayLabel.maximumNumberOfLines = 2;
 
+    [statusCardBody addArrangedSubview:batchRow];
+    [statusCardBody addArrangedSubview:gatewayLabel];
+    NSView* statusCard = make_panel(@"设备 / 批处理", statusCardBody);
+
+    NSStackView* modelCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
+    [modelCardBody addArrangedSubview:modelRow];
+    [modelCardBody addArrangedSubview:modelPathRow];
+    [modelCardBody addArrangedSubview:modelActionRowTop];
+    [modelCardBody addArrangedSubview:modelActionRowBottom];
+    NSView* modelCard = make_panel(@"模型管理", modelCardBody);
+
     NSScrollView* rawScroll = make_text_scroll(&_rawView);
-    [rawScroll.heightAnchor constraintGreaterThanOrEqualToConstant:320.0].active = YES;
+    [rawScroll.heightAnchor constraintGreaterThanOrEqualToConstant:54.0].active = YES;
 
-    NSScrollView* transferScroll = make_text_scroll(&_transferView);
-    [transferScroll.heightAnchor constraintGreaterThanOrEqualToConstant:150.0].active = YES;
+    NSStackView* diagnosticsCardBody = make_stack(NSUserInterfaceLayoutOrientationVertical, 4.0);
+    [diagnosticsCardBody addArrangedSubview:rawScroll];
+    NSView* diagnosticsCard = make_panel(@"诊断", diagnosticsCardBody);
 
-    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 10.0);
-    [body addArrangedSubview:aliasRow];
-    [body addArrangedSubview:modelRow];
-    [body addArrangedSubview:modelMetaRow];
-    [body addArrangedSubview:modelPathRow];
-    [body addArrangedSubview:batchRow];
-    [body addArrangedSubview:gatewayLabel];
-    [body addArrangedSubview:_networkLabel];
-    [body addArrangedSubview:_capabilityLabel];
-    [body addArrangedSubview:_modelsLabel];
-    [body addArrangedSubview:transferScroll];
-    [body addArrangedSubview:rawScroll];
+    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
+    [body addArrangedSubview:statusCard];
+    [body addArrangedSubview:modelCard];
+    [body addArrangedSubview:diagnosticsCard];
 
-    return make_panel(@"MODELS / BATCH / RAW", body);
+    return make_panel(@"控制矩阵", body);
 }
 
 - (NSView*)buildTerminalPanel {
     NSScrollView* terminalScroll = make_text_scroll(&_terminalView);
-    [terminalScroll.heightAnchor constraintGreaterThanOrEqualToConstant:180.0].active = YES;
-    return make_panel(@"DATA TERMINAL", terminalScroll);
+    [terminalScroll.heightAnchor constraintGreaterThanOrEqualToConstant:36.0].active = YES;
+
+    _terminalSearchField = make_input(@"搜索日志");
+    _terminalLevelPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    style_popup(_terminalLevelPopup);
+    configure_popup_items(_terminalLevelPopup, terminal_level_options());
+    _terminalLevelPopup.target = self;
+    _terminalLevelPopup.action = @selector(terminalFilterChanged:);
+    select_popup_value(_terminalLevelPopup, "all");
+
+    _terminalScopePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    style_popup(_terminalScopePopup);
+    configure_popup_items(_terminalScopePopup, terminal_scope_options());
+    _terminalScopePopup.target = self;
+    _terminalScopePopup.action = @selector(terminalFilterChanged:);
+    select_popup_value(_terminalScopePopup, "all");
+
+    NSButton* exportButton = make_button(@"导出日志", self, @selector(exportTerminalPressed:));
+
+    NSStackView* filterRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
+    [filterRow addArrangedSubview:_terminalSearchField];
+    [filterRow addArrangedSubview:_terminalLevelPopup];
+    [filterRow addArrangedSubview:_terminalScopePopup];
+    [filterRow addArrangedSubview:exportButton];
+    [_terminalLevelPopup.widthAnchor constraintEqualToConstant:104.0].active = YES;
+    [_terminalScopePopup.widthAnchor constraintEqualToConstant:110.0].active = YES;
+    [exportButton.widthAnchor constraintEqualToConstant:84.0].active = YES;
+
+    NSStackView* body = make_stack(NSUserInterfaceLayoutOrientationVertical, 6.0);
+    [body addArrangedSubview:filterRow];
+    [body addArrangedSubview:terminalScroll];
+
+    return make_panel(@"数据终端", body);
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)tableView {
@@ -1065,7 +1814,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     if ([identifier isEqualToString:@"alias"]) {
         value = snapshot.alias.empty() ? snapshot.device_id : snapshot.alias;
     } else if ([identifier isEqualToString:@"state"]) {
-        value = snapshot.online ? "online" : "offline";
+        value = device_state_digest(snapshot);
     } else {
         value = snapshot.host.empty() ? snapshot.device_id : (snapshot.host + ":" + std::to_string(snapshot.port));
     }
@@ -1080,12 +1829,27 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     const NSInteger row = _tableView.selectedRow;
     if (row < 0 || row >= static_cast<NSInteger>(_devices.size())) {
         _selectedDeviceId.clear();
+        _lastControlSyncSignature.clear();
+        _pendingControlDeviceId.clear();
+        _controlDraftDirty = false;
+        _controlApplyPending = false;
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
         [self refreshPresentation];
         return;
     }
 
-    _selectedDeviceId = _devices[static_cast<std::size_t>(row)].device_id;
-    [self loadControlsFromCurrentSelection];
+    const std::string next_device_id = _devices[static_cast<std::size_t>(row)].device_id;
+    const bool selection_changed = next_device_id != _selectedDeviceId;
+    _selectedDeviceId = next_device_id;
+
+    if (selection_changed) {
+        _lastControlSyncSignature.clear();
+        _pendingControlDeviceId.clear();
+        _controlDraftDirty = false;
+        _controlApplyPending = false;
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
+        [self loadControlsFromCurrentSelection];
+    }
     [self refreshPresentation];
 }
 
@@ -1094,6 +1858,10 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     _devices = _runtime->snapshots();
     [_tableView reloadData];
+
+    if (_selectedDeviceId.empty() && !_devices.empty() && _tableView.selectedRow < 0) {
+        [_tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    }
 
     if (!_selectedDeviceId.empty()) {
         const std::string selected_device_id = _selectedDeviceId;
@@ -1105,24 +1873,30 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
             if (_tableView.selectedRow != row) {
                 [_tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
             }
+        } else if (_tableView.selectedRow >= 0 && _tableView.selectedRow < static_cast<NSInteger>(_devices.size())) {
+            _selectedDeviceId = _devices[static_cast<std::size_t>(_tableView.selectedRow)].device_id;
+            _lastControlSyncSignature.clear();
+            _pendingControlDeviceId.clear();
+            _controlDraftDirty = false;
+            _controlApplyPending = false;
+        } else if (!_devices.empty()) {
+            _selectedDeviceId = _devices.front().device_id;
+            _lastControlSyncSignature.clear();
+            _pendingControlDeviceId.clear();
+            _controlDraftDirty = false;
+            _controlApplyPending = false;
+            [_tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
         }
     }
 
     const std::vector<UiLogEntry> logs = _runtime->logs();
-    if (logs.size() != _lastLogCount) {
-        std::ostringstream stream;
-        for (const auto& entry : logs) {
-            stream << "[" << entry.timestamp << "] " << entry.level << " " << entry.message << '\n';
-        }
-        _terminalView.string = to_ns_string(stream.str());
-        [_terminalView scrollRangeToVisible:NSMakeRange(_terminalView.string.length, 0)];
-        _lastLogCount = logs.size();
-    }
+    [self refreshTerminalPresentationWithLogs:logs];
+    _lastLogCount = logs.size();
 
     const std::vector<ModelTransferSnapshot> transfers = _runtime->model_transfers();
     std::ostringstream transfer_stream;
     if (transfers.empty()) {
-        transfer_stream << "no model transfers yet";
+        transfer_stream << "暂无模型传输记录";
     } else {
         for (std::size_t index = 0; index < transfers.size(); ++index) {
             if (index > 0) {
@@ -1131,70 +1905,239 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
             transfer_stream << transfer_digest(transfers[index]);
         }
     }
+    _latestTransferDigest = transfer_stream.str();
     _transferView.string = to_ns_string(transfer_stream.str());
+
+    if (const DeviceSnapshot* snapshot = [self currentSnapshot]; snapshot != nullptr) {
+        const std::string signature = control_sync_signature(*snapshot);
+        const bool controls_aligned = controls_match_snapshot(
+            *snapshot,
+            _modePopup,
+            _focusPopup,
+            _lensPopup,
+            _profilePopup,
+            _fpsSlider,
+            _temperatureSlider,
+            _tintSlider,
+            _exposureSlider,
+            _isoSlider,
+            _evSlider,
+            _zoomSlider,
+            _lensSlider,
+            _flashToggle,
+            _inferenceToggle,
+            _persistToggle,
+            _smoothAFToggle
+        );
+        const bool apply_timed_out = _controlApplyPending
+            && (_pendingControlDeviceId != snapshot->device_id
+                || std::chrono::steady_clock::now() - _controlApplyStartedAt > std::chrono::seconds(2));
+
+        if (_controlApplyPending && controls_aligned) {
+            _controlApplyPending = false;
+            _pendingControlDeviceId.clear();
+            _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
+            _lastControlSyncSignature = signature;
+        } else if (_controlApplyPending && apply_timed_out) {
+            _controlApplyPending = false;
+            _pendingControlDeviceId.clear();
+            _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
+            _lastControlSyncSignature.clear();
+        }
+
+        if (!_controlDraftDirty && !_controlApplyPending && signature != _lastControlSyncSignature) {
+            _lastControlSyncSignature = signature;
+            [self loadControlsFromCurrentSelection];
+        }
+    } else {
+        _pendingControlDeviceId.clear();
+        _controlDraftDirty = false;
+        _controlApplyPending = false;
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
+    }
 
     [self refreshPresentation];
     [self refreshSliderLabels];
     [self refreshControlAvailability];
 }
 
+- (void)refreshTerminalPresentationWithLogs:(const std::vector<UiLogEntry>&)logs {
+    if (_terminalView == nil) {
+        return;
+    }
+
+    const std::string search = to_std_string(_terminalSearchField.stringValue);
+    const std::string selected_level = _terminalLevelPopup.selectedItem == nil ? "all" : popup_selected_value(_terminalLevelPopup);
+    const bool current_device_scope = popup_selected_value(_terminalScopePopup) == "current";
+    const DeviceSnapshot* current_snapshot = [self currentSnapshot];
+
+    NSMutableAttributedString* output = [[NSMutableAttributedString alloc] init];
+    std::size_t matched_count = 0;
+
+    for (const auto& entry : logs) {
+        const std::string level = lowercase_copy(entry.level);
+        const bool level_matches = selected_level == "all" || level == selected_level;
+
+        bool scope_matches = true;
+        if (current_device_scope) {
+            scope_matches = current_snapshot != nullptr
+                && (
+                    contains_case_insensitive(entry.message, current_snapshot->device_id)
+                    || contains_case_insensitive(entry.message, current_snapshot->alias)
+                    || contains_case_insensitive(entry.message, current_snapshot->host)
+                );
+        }
+
+        const std::string line = log_entry_text(entry);
+        const bool search_matches = contains_case_insensitive(line, search);
+
+        if (!level_matches || !scope_matches || !search_matches) {
+            continue;
+        }
+
+        ++matched_count;
+        NSDictionary* attributes = @{
+            NSForegroundColorAttributeName: log_color_for_level(entry.level),
+            NSFontAttributeName: mono_font(12.0)
+        };
+        [output appendAttributedString:[[NSAttributedString alloc] initWithString:to_ns_string(line + "\n") attributes:attributes]];
+    }
+
+    if (matched_count == 0) {
+        NSDictionary* empty_attributes = @{
+            NSForegroundColorAttributeName: hex_color(0xA8B7C2),
+            NSFontAttributeName: mono_font(12.0)
+        };
+        [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"当前筛选条件下没有匹配日志\n" attributes:empty_attributes]];
+    }
+
+    [_terminalView.textStorage setAttributedString:output];
+    [_terminalView scrollRangeToVisible:NSMakeRange(_terminalView.string.length, 0)];
+
+    if (_terminalStatsLabel != nil) {
+        std::ostringstream stream;
+        stream
+            << "日志：" << matched_count << "/" << logs.size()
+            << " | 级别=" << localized_log_level_name(selected_level)
+            << " | 范围=" << (current_device_scope ? (current_snapshot == nullptr ? "未选设备" : "当前设备") : "全部设备");
+        _terminalStatsLabel.stringValue = to_ns_string(stream.str());
+    }
+}
+
 - (void)refreshPresentation {
     const DeviceSnapshot* snapshot = [self currentSnapshot];
     if (snapshot == nullptr) {
-        _summaryLabel.stringValue = @"no device selected";
-        _networkLabel.stringValue = @"network: no device selected";
-        _capabilityLabel.stringValue = @"capabilities: no device selected";
-        _modelsLabel.stringValue = @"models: no device selected";
+        _summaryLabel.stringValue = @"未选择设备";
+        _networkLabel.stringValue = @"网络：未选择设备";
+        _capabilityLabel.stringValue = @"能力：未选择设备";
+        _modelsLabel.stringValue = @"模型：未选择设备";
         _rawView.string = @"";
+        [self refreshArchivePresentation];
         [self refreshPreviewForSnapshot:nullptr];
         return;
     }
 
     const Value* status = snapshot->status_payload.is_object() ? &snapshot->status_payload : nullptr;
-    const std::string capture_mode = status == nullptr ? "n/a" : string_or(find_in_object(*status, "captureMode"), "n/a");
-    const std::string focus_mode = status == nullptr ? "n/a" : string_or(find_in_object(*status, "focusMode"), "n/a");
-    const std::string selected_lens = status == nullptr ? "n/a" : string_or(find_in_object(*status, "selectedLens"), "n/a");
-    const std::string profile = status == nullptr ? "n/a" : string_or(find_in_object(*status, "recordingProfile"), "n/a");
-    const std::string remote_post = status == nullptr ? "" : string_or(find_in_object(*status, "remotePostURL"));
+    const std::string capture_mode = status == nullptr ? "" : string_or(find_in_object(*status, "captureMode"));
+    const std::string focus_mode = status == nullptr ? "" : string_or(find_in_object(*status, "focusMode"));
+    const std::string selected_lens = status == nullptr ? "" : string_or(find_in_object(*status, "selectedLens"));
+    const std::string profile = status == nullptr ? "" : string_or(find_in_object(*status, "recordingProfile"));
 
     std::ostringstream summary;
     summary
         << snapshot->device_id
         << " | " << (snapshot->alias.empty() ? snapshot->device_id : snapshot->alias)
-        << " | " << (snapshot->online ? "online" : "offline")
+        << " | " << (snapshot->online ? "在线" : "离线")
         << " | " << snapshot->host << ":" << snapshot->port
-        << " | last=" << snapshot->last_seen
-        << " | msg=" << snapshot->last_message << "\n"
-        << "mode=" << capture_mode
-        << " | focus=" << focus_mode
-        << " | lens=" << selected_lens
-        << " | profile=" << profile
-        << " | record=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "isRecording"), false))
-        << " | ai=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "inferenceEnabled"), false))
-        << " | store=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "persistMediaEnabled"), false))
-        << " | flash=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "flashEnabled"), false))
-        << " | smoothAF=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "smoothAutoFocusEnabled"), false))
-        << " | previewFrame=" << snapshot->preview_frame_index << "\n"
-        << "ips=" << network_digest(*snapshot) << "\n"
-        << "models=" << models_digest(*snapshot)
-        << " | post=" << (remote_post.empty() ? "disabled" : remote_post);
+        << " | 活跃=" << last_active_text(*snapshot)
+        << " | 最近时间=" << snapshot->last_seen
+        << " | 最近消息=" << snapshot->last_message << "\n"
+        << "模式=" << localized_capture_mode(capture_mode)
+        << " | 对焦=" << localized_focus_mode(focus_mode)
+        << " | 镜头=" << localized_lens_name(selected_lens)
+        << " | 编码=" << localized_profile_name(profile)
+        << " | 录像=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "isRecording"), false))
+        << " | 推理=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "inferenceEnabled"), false))
+        << " | 保存=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "persistMediaEnabled"), false))
+        << " | 闪光灯=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "flashEnabled"), false))
+        << " | 平滑对焦=" << bool_text(status != nullptr && bool_or(find_in_object(*status, "smoothAutoFocusEnabled"), false))
+        << " | 预览帧=" << snapshot->preview_frame_index << "\n"
+        << "IP=" << network_digest(*snapshot) << " | 最后活跃=" << last_active_text(*snapshot) << "\n"
+        << "模型=" << models_digest(*snapshot);
     _summaryLabel.stringValue = to_ns_string(summary.str());
-    _networkLabel.stringValue = to_ns_string("network: " + network_digest(*snapshot));
-    _capabilityLabel.stringValue = to_ns_string("capabilities: " + capability_digest(*snapshot));
-    _modelsLabel.stringValue = to_ns_string("models: " + models_digest(*snapshot));
-    _rawView.string = to_ns_string(snapshot_dump(*snapshot));
+    _networkLabel.stringValue = to_ns_string("网络：" + network_digest(*snapshot) + " | 最后活跃=" + last_active_text(*snapshot));
+    _capabilityLabel.stringValue = to_ns_string("能力：" + capability_digest(*snapshot));
+    _modelsLabel.stringValue = to_ns_string("模型：" + models_digest(*snapshot));
+    std::string diagnostic_text;
+    if (!_latestTransferDigest.empty()) {
+        diagnostic_text += "模型传输\n";
+        diagnostic_text += _latestTransferDigest;
+        diagnostic_text += "\n\n";
+    }
+    diagnostic_text += snapshot_dump(*snapshot);
+    _rawView.string = to_ns_string(diagnostic_text);
+    [self refreshArchivePresentation];
     [self refreshPreviewForSnapshot:snapshot];
+}
+
+- (void)refreshArchivePresentation {
+    if (_archivePopup == nil || _archiveLabel == nil) {
+        return;
+    }
+
+    [_archivePopup removeAllItems];
+    _archivePaths.clear();
+
+    const DeviceSnapshot* snapshot = [self currentSnapshot];
+    if (snapshot == nullptr) {
+        [_archivePopup addItemWithTitle:@"未选择设备"];
+        _archivePopup.enabled = NO;
+        _archiveLabel.stringValue = @"归档：未选择设备";
+        return;
+    }
+
+    const auto archive_paths = recent_media_paths_for_device(*snapshot);
+    if (archive_paths.empty()) {
+        [_archivePopup addItemWithTitle:@"暂无归档媒体"];
+        _archivePopup.enabled = NO;
+        _archiveLabel.stringValue = to_ns_string(
+            "归档：等待远程拍照/录像推送到 "
+            + compact_path(vino::desktop::media_root_for_device(snapshot->device_id).string())
+        );
+        return;
+    }
+
+    _archivePopup.enabled = YES;
+    for (const auto& path : archive_paths) {
+        const std::string path_string = path.string();
+        _archivePaths.push_back(path_string);
+        [_archivePopup addItemWithTitle:to_ns_string(path.filename().string())];
+        _archivePopup.lastItem.representedObject = to_ns_string(path_string);
+    }
+
+    _archiveLabel.stringValue = to_ns_string(
+        "归档：" + std::to_string(_archivePaths.size()) + " 个文件 · "
+        + compact_path(vino::desktop::media_root_for_device(snapshot->device_id).string())
+    );
 }
 
 - (void)loadControlsFromCurrentSelection {
     const DeviceSnapshot* snapshot = [self currentSnapshot];
     if (snapshot == nullptr) {
+        _controlDraftDirty = false;
+        _controlApplyPending = false;
+        _pendingControlDeviceId.clear();
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
         [self refreshControlAvailability];
         return;
     }
 
     _aliasField.stringValue = to_ns_string(snapshot->alias);
     if (!snapshot->status_payload.is_object()) {
+        _controlDraftDirty = false;
+        _controlApplyPending = false;
+        _pendingControlDeviceId.clear();
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
         [self refreshControlAvailability];
         return;
     }
@@ -1203,22 +2146,22 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     const auto* captureMode = find_in_object(status, "captureMode");
     if (captureMode != nullptr && captureMode->is_string()) {
-        [_modePopup selectItemWithTitle:to_ns_string(captureMode->as_string())];
+        select_popup_value(_modePopup, captureMode->as_string());
     }
 
     const auto* focusMode = find_in_object(status, "focusMode");
     if (focusMode != nullptr && focusMode->is_string()) {
-        [_focusPopup selectItemWithTitle:to_ns_string(focusMode->as_string())];
+        select_popup_value(_focusPopup, focusMode->as_string());
     }
 
     const auto* selectedLens = find_in_object(status, "selectedLens");
     if (selectedLens != nullptr && selectedLens->is_string()) {
-        [_lensPopup selectItemWithTitle:to_ns_string(selectedLens->as_string())];
+        select_popup_value(_lensPopup, selectedLens->as_string());
     }
 
     const auto* recordingProfile = find_in_object(status, "recordingProfile");
     if (recordingProfile != nullptr && recordingProfile->is_string()) {
-        [_profilePopup selectItemWithTitle:to_ns_string(recordingProfile->as_string())];
+        select_popup_value(_profilePopup, recordingProfile->as_string());
     }
 
     const auto* selectedModelId = find_in_object(status, "selectedModelId");
@@ -1232,7 +2175,6 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _smoothAFToggle.state = bool_or(find_in_object(status, "smoothAutoFocusEnabled"), false) ? NSControlStateValueOn : NSControlStateValueOff;
     _inferenceToggle.state = bool_or(find_in_object(status, "inferenceEnabled"), false) ? NSControlStateValueOn : NSControlStateValueOff;
     _persistToggle.state = bool_or(find_in_object(status, "persistMediaEnabled"), false) ? NSControlStateValueOn : NSControlStateValueOff;
-    _remotePostField.stringValue = to_ns_string(string_or(find_in_object(status, "remotePostURL")));
 
     if (const auto* settings = find_in_object(status, "settings"); settings != nullptr && settings->is_object()) {
         _fpsSlider.doubleValue = number_or(find_in_object(*settings, "frameRate"), _fpsSlider.doubleValue);
@@ -1265,22 +2207,22 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
                     }
                 }
                 if (!items.empty()) {
-                    replace_popup_items(_lensPopup, items);
-                    [_lensPopup selectItemWithTitle:to_ns_string(string_or(selectedLens, items.front()))];
+                    configure_popup_items(_lensPopup, lens_options(items));
+                    select_popup_value(_lensPopup, string_or(selectedLens, items.front()));
                 }
             }
 
             if (const auto* supportsProRes = find_in_object(*capabilities, "supportsProRes"); supportsProRes != nullptr) {
-                if (bool_or(supportsProRes, false)) {
-                    replace_popup_items(_profilePopup, {"h264", "hevc", "proRes"});
-                } else {
-                    replace_popup_items(_profilePopup, {"h264", "hevc"});
-                }
-                [_profilePopup selectItemWithTitle:to_ns_string(string_or(recordingProfile, "hevc"))];
+                configure_popup_items(_profilePopup, recording_profile_options(bool_or(supportsProRes, false)));
+                select_popup_value(_profilePopup, string_or(recordingProfile, "hevc"));
             }
         }
     }
 
+    _controlDraftDirty = false;
+    _controlApplyPending = false;
+    _pendingControlDeviceId.clear();
+    _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
     [self refreshSliderLabels];
     [self refreshControlAvailability];
 }
@@ -1309,8 +2251,8 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     if (snapshot == nullptr) {
         _previewImageView.image = nil;
-        _previewTitleLabel.stringValue = @"LIVE PREVIEW MIRROR RESERVED";
-        _previewSubtitleLabel.stringValue = @"select a device to inspect latest media, inference digest, and runtime artifact state";
+        _previewTitleLabel.stringValue = @"实时预览待命";
+        _previewSubtitleLabel.stringValue = @"请选择设备，以查看实时镜像、最新媒体、推理摘要和运行状态";
         return;
     }
 
@@ -1319,19 +2261,19 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
         NSData* image_data = [[NSData alloc] initWithBase64EncodedString:to_ns_string(snapshot->preview_jpeg_base64) options:0];
         NSImage* image = image_data == nil ? nil : [[NSImage alloc] initWithData:image_data];
         _previewImageView.image = image;
-        _previewTitleLabel.stringValue = @"LIVE MIRROR";
+        _previewTitleLabel.stringValue = @"实时镜像";
         _previewSubtitleLabel.stringValue = to_ns_string(
-            "frame=" + std::to_string(snapshot->preview_frame_index)
-            + " | size=" + std::to_string(snapshot->preview_image_width) + "x" + std::to_string(snapshot->preview_image_height)
-            + " | received=" + snapshot->preview_seen + "\n"
-            + "latest inference :: " + inference_summary
+            "帧=" + std::to_string(snapshot->preview_frame_index)
+            + " | 尺寸=" + std::to_string(snapshot->preview_image_width) + "x" + std::to_string(snapshot->preview_image_height)
+            + " | 接收时间=" + snapshot->preview_seen + "\n"
+            + "最新推理：" + inference_summary
         );
         return;
     }
 
     if (!snapshot->last_media_path.empty()) {
         const bool is_image = is_image_media_path(snapshot->last_media_path);
-        const std::string category = snapshot->last_media_category.empty() ? "media" : snapshot->last_media_category;
+        const std::string category = snapshot->last_media_category.empty() ? "媒体" : snapshot->last_media_category;
         const std::string file_name = std::filesystem::path(snapshot->last_media_path).filename().string();
 
         if (is_image) {
@@ -1341,21 +2283,21 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
             _previewImageView.image = nil;
         }
 
-        _previewTitleLabel.stringValue = to_ns_string("LATEST " + std::string(is_image ? "IMAGE" : "ARTIFACT") + " · " + category);
+        _previewTitleLabel.stringValue = to_ns_string(std::string(is_image ? "最新图像" : "最新文件") + " · " + category);
         _previewSubtitleLabel.stringValue = to_ns_string(
             file_name + "\n"
             + compact_path(snapshot->last_media_path) + "\n"
-            + "received=" + (snapshot->last_media_seen.empty() ? snapshot->last_seen : snapshot->last_media_seen)
+            + "接收时间=" + (snapshot->last_media_seen.empty() ? snapshot->last_seen : snapshot->last_media_seen)
             + " | " + inference_summary
         );
         return;
     }
 
     _previewImageView.image = nil;
-    _previewTitleLabel.stringValue = @"NO MEDIA RECEIVED YET";
+    _previewTitleLabel.stringValue = @"尚未收到媒体";
     _previewSubtitleLabel.stringValue = to_ns_string(
-        "latest inference :: " + inference_summary + "\n"
-        + "desktop runtime media path will populate here after remote photo / video capture completes"
+        "最新推理：" + inference_summary + "\n"
+        + "远程拍照或录像完成后，媒体文件会出现在此处"
     );
 }
 
@@ -1385,7 +2327,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
         }
     }
 
-    const bool lockedFocus = [[_focusPopup titleOfSelectedItem] isEqualToString:@"locked"];
+    const bool lockedFocus = popup_selected_value(_focusPopup) == "locked";
 
     _productField.enabled = hasSelection;
     _pointField.enabled = hasSelection;
@@ -1395,7 +2337,6 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _modelVersionField.enabled = hasSelection;
     _activateAfterInstallToggle.enabled = hasSelection;
 
-    _remotePostField.enabled = isOnline;
     _modePopup.enabled = isOnline;
     _focusPopup.enabled = isOnline;
     _lensPopup.enabled = isOnline;
@@ -1414,6 +2355,36 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _smoothAFToggle.enabled = isOnline && supportsSmoothAF && !lockedFocus;
     _inferenceToggle.enabled = isOnline;
     _persistToggle.enabled = isOnline;
+    [self refreshControlStatusPresentation];
+}
+
+- (void)refreshControlStatusPresentation {
+    if (_controlStatusLabel == nil) {
+        return;
+    }
+
+    const DeviceSnapshot* snapshot = [self currentSnapshot];
+    NSString* text = @"参数状态：未选择设备";
+    NSColor* color = hex_color(0xA8B7C2);
+
+    if (snapshot != nullptr) {
+        if (!snapshot->online) {
+            text = @"参数状态：设备离线";
+            color = hex_color(0xA8B7C2);
+        } else if (_controlApplyPending) {
+            text = @"参数状态：下发中，等待设备确认";
+            color = hex_color(0xFFC56B);
+        } else if (_controlDraftDirty) {
+            text = @"参数状态：有未应用改动";
+            color = hex_color(0xFFC56B);
+        } else {
+            text = @"参数状态：已同步到设备";
+            color = hex_color(0x62F0FF);
+        }
+    }
+
+    _controlStatusLabel.stringValue = text;
+    _controlStatusLabel.textColor = color;
 }
 
 - (TriggerContext)currentContext {
@@ -1445,19 +2416,89 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
 - (void)connectPressed:(id)sender {
     (void)sender;
-    const std::string host = to_std_string(_hostField.stringValue);
-    if (!host.empty()) {
-        _runtime->connect_host(host);
+    const auto endpoint = parse_host_port_input(to_std_string(_hostField.stringValue));
+    if (!endpoint.has_value()) {
+        [self updateFleetStatusMessage:"请输入有效的 iPhone 地址，格式为 IP 或 IP:端口"];
+        return;
     }
+
+    _hostField.stringValue = to_ns_string(
+        endpoint->port == vino::desktop::PortMap::control
+            ? endpoint->host
+            : (endpoint->host + ":" + std::to_string(endpoint->port))
+    );
+    [self updateFleetStatusMessage:"正在连接 " + endpoint->host + ":" + std::to_string(endpoint->port) + " …"];
+
+    const HostPortInput connection_target = *endpoint;
+    __weak VinoDesktopAppController* weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        VinoDesktopAppController* strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->_runtime == nullptr) {
+            return;
+        }
+
+        const bool connected = strongSelf->_runtime->connect_host(connection_target.host, connection_target.port);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            VinoDesktopAppController* uiSelf = weakSelf;
+            if (uiSelf == nil) {
+                return;
+            }
+
+            [uiSelf updateFleetStatusMessage:
+                connected
+                    ? ("连接成功：" + connection_target.host + ":" + std::to_string(connection_target.port))
+                    : ("连接失败：" + connection_target.host + ":" + std::to_string(connection_target.port) + "，请确认 iPhone IP、端口 48920 和本地网络权限")
+            ];
+            [uiSelf refreshUI:nil];
+        });
+    });
 }
 
 - (void)scanPressed:(id)sender {
     (void)sender;
-    _runtime->scan_prefix_async(
-        to_std_string(_scanPrefixField.stringValue),
-        std::max(0, _scanStartField.intValue),
-        std::max(0, _scanEndField.intValue)
-    );
+    int start = std::max(0, _scanStartField.intValue);
+    int end = std::max(0, _scanEndField.intValue);
+    if (end < start) {
+        std::swap(start, end);
+        _scanStartField.intValue = start;
+        _scanEndField.intValue = end;
+    }
+
+    const std::vector<std::string> prefixes = [self resolvedScanPrefixes];
+    if (prefixes.empty()) {
+        [self updateFleetStatusMessage:"没有可用的本机 IPv4 网段，请手动输入例如 192.168.31"];
+        return;
+    }
+
+    const std::string prefix_summary = join_strings(prefixes, " · ");
+    [self updateFleetStatusMessage:
+        "正在扫描 " + prefix_summary + ".* ，范围 " + std::to_string(start) + "-" + std::to_string(end) + " …"
+    ];
+
+    __weak VinoDesktopAppController* weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        VinoDesktopAppController* strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->_runtime == nullptr) {
+            return;
+        }
+
+        int found_total = 0;
+        for (const auto& prefix : prefixes) {
+            found_total += strongSelf->_runtime->scan_prefix(prefix, start, end);
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            VinoDesktopAppController* uiSelf = weakSelf;
+            if (uiSelf == nil) {
+                return;
+            }
+
+            [uiSelf updateFleetStatusMessage:
+                "扫描完成：" + prefix_summary + ".* ，发现 " + std::to_string(found_total) + " 台设备"
+            ];
+            [uiSelf refreshUI:nil];
+        });
+    });
 }
 
 - (void)startBonjourDiscovery {
@@ -1467,7 +2508,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     _serviceBrowser = [[NSNetServiceBrowser alloc] init];
     _serviceBrowser.delegate = self;
-    _bonjourLabel.stringValue = @"Bonjour searching _vino-control._tcp";
+    _bonjourLabel.stringValue = @"Bonjour 正在搜索 _vino-control._tcp";
     [_serviceBrowser searchForServicesOfType:@"_vino-control._tcp." inDomain:@""];
 }
 
@@ -1479,7 +2520,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     }];
 
     if (services.count == 0) {
-        [_bonjourPopup addItemWithTitle:@"No Bonjour devices"];
+        [_bonjourPopup addItemWithTitle:@"未发现 Bonjour 设备"];
         _bonjourPopup.enabled = NO;
         return;
     }
@@ -1488,13 +2529,13 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     for (NSNetService* service in services) {
         const std::string host = host_from_service(service);
         NSString* title = host.empty()
-            ? [NSString stringWithFormat:@"%@ · resolving", service.name]
+            ? [NSString stringWithFormat:@"%@ · 解析中", service.name]
             : [NSString stringWithFormat:@"%@ · %@:%ld", service.name, to_ns_string(host), static_cast<long>(service.port > 0 ? service.port : 48920)];
         [_bonjourPopup addItemWithTitle:title];
         _bonjourPopup.lastItem.representedObject = service;
     }
 
-    _bonjourLabel.stringValue = [NSString stringWithFormat:@"Bonjour discovered %lu device(s)", static_cast<unsigned long>(services.count)];
+    _bonjourLabel.stringValue = [NSString stringWithFormat:@"Bonjour 已发现 %lu 台设备", static_cast<unsigned long>(services.count)];
 }
 
 - (void)refreshBonjourPressed:(id)sender {
@@ -1517,7 +2558,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     if (host.empty()) {
         service.delegate = self;
         [service resolveWithTimeout:3.0];
-        _bonjourLabel.stringValue = [NSString stringWithFormat:@"Resolving %@", service.name];
+        _bonjourLabel.stringValue = [NSString stringWithFormat:@"正在解析 %@", service.name];
         return;
     }
 
@@ -1527,12 +2568,12 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
 - (void)netServiceBrowserWillSearch:(NSNetServiceBrowser*)browser {
     (void)browser;
-    _bonjourLabel.stringValue = @"Bonjour searching _vino-control._tcp";
+    _bonjourLabel.stringValue = @"Bonjour 正在搜索 _vino-control._tcp";
 }
 
 - (void)netServiceBrowser:(NSNetServiceBrowser*)browser didNotSearch:(NSDictionary<NSString*, NSNumber*>*)errorDict {
     (void)browser;
-    _bonjourLabel.stringValue = [NSString stringWithFormat:@"Bonjour search failed %@", errorDict.description];
+    _bonjourLabel.stringValue = [NSString stringWithFormat:@"Bonjour 搜索失败 %@", errorDict.description];
 }
 
 - (void)netServiceBrowser:(NSNetServiceBrowser*)browser didFindService:(NSNetService*)service moreComing:(BOOL)moreComing {
@@ -1568,21 +2609,89 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
 - (void)sliderChanged:(id)sender {
     (void)sender;
+    _controlDraftDirty = true;
+    _controlApplyPending = false;
+    _pendingControlDeviceId.clear();
+    _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
     [self refreshSliderLabels];
 }
 
 - (void)controlChanged:(id)sender {
     (void)sender;
+    _controlDraftDirty = true;
+    _controlApplyPending = false;
+    _pendingControlDeviceId.clear();
+    _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
     [self refreshControlAvailability];
 }
 
 - (void)togglePressed:(id)sender {
-    (void)sender;
+    if (sender != _activateAfterInstallToggle) {
+        _controlDraftDirty = true;
+        _controlApplyPending = false;
+        _pendingControlDeviceId.clear();
+        _controlApplyStartedAt = std::chrono::steady_clock::time_point {};
+    }
     [self refreshControlAvailability];
+}
+
+- (void)terminalFilterChanged:(id)sender {
+    (void)sender;
+    [self refreshUI:nil];
+}
+
+- (void)exportTerminalPressed:(id)sender {
+    (void)sender;
+
+    NSSavePanel* panel = [NSSavePanel savePanel];
+    panel.nameFieldStringValue = @"vino-数据终端.log";
+
+    if ([panel runModal] != NSModalResponseOK || panel.URL == nil) {
+        return;
+    }
+
+    NSError* error = nil;
+    BOOL success = [_terminalView.string writeToURL:panel.URL atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    if (!success && error != nil) {
+        NSAlert* alert = [[NSAlert alloc] init];
+        alert.messageText = @"导出失败";
+        alert.informativeText = error.localizedDescription;
+        [alert runModal];
+    }
+}
+
+- (void)openArchivePressed:(id)sender {
+    (void)sender;
+    NSString* path = (NSString*)_archivePopup.selectedItem.representedObject;
+    if (path.length == 0) {
+        return;
+    }
+
+    NSURL* url = [NSURL fileURLWithPath:path];
+    if (url != nil) {
+        [[NSWorkspace sharedWorkspace] openURL:url];
+    }
+}
+
+- (void)revealArchivePressed:(id)sender {
+    (void)sender;
+    NSString* path = (NSString*)_archivePopup.selectedItem.representedObject;
+    if (path.length == 0) {
+        return;
+    }
+
+    NSURL* url = [NSURL fileURLWithPath:path];
+    if (url != nil) {
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[url]];
+    }
 }
 
 - (void)applyPatchPressed:(id)sender {
     (void)sender;
+    const DeviceSnapshot* snapshot = [self currentSnapshot];
+    if (snapshot == nullptr) {
+        return;
+    }
 
     Value::Object settings;
     settings["frameRate"] = _fpsSlider.doubleValue;
@@ -1595,17 +2704,20 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     settings["lensPosition"] = _lensSlider.doubleValue;
 
     Value::Object payload;
-    payload["captureMode"] = to_std_string(_modePopup.selectedItem.title);
-    payload["focusMode"] = to_std_string(_focusPopup.selectedItem.title);
-    payload["selectedLens"] = to_std_string(_lensPopup.selectedItem.title);
-    payload["recordingProfile"] = to_std_string(_profilePopup.selectedItem.title);
+    payload["captureMode"] = popup_selected_value(_modePopup);
+    payload["focusMode"] = popup_selected_value(_focusPopup);
+    payload["selectedLens"] = popup_selected_value(_lensPopup);
+    payload["recordingProfile"] = popup_selected_value(_profilePopup);
     payload["smoothAutoFocusEnabled"] = (_smoothAFToggle.state == NSControlStateValueOn);
     payload["flashEnabled"] = (_flashToggle.state == NSControlStateValueOn);
     payload["inferenceEnabled"] = (_inferenceToggle.state == NSControlStateValueOn);
     payload["persistMediaEnabled"] = (_persistToggle.state == NSControlStateValueOn);
-    payload["remotePostURL"] = to_std_string(_remotePostField.stringValue);
     payload["settings"] = settings;
 
+    _controlDraftDirty = false;
+    _controlApplyPending = true;
+    _pendingControlDeviceId = snapshot->device_id;
+    _controlApplyStartedAt = std::chrono::steady_clock::now();
     [self dispatchToSelectedAction:"camera.config.patch" payload:Value(payload)];
 }
 

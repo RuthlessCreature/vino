@@ -1,5 +1,7 @@
 import SwiftUI
 import CoreImage
+import AVFoundation
+import MediaPlayer
 import UIKit
 
 public struct VinoPhoneShellView: View {
@@ -8,7 +10,10 @@ public struct VinoPhoneShellView: View {
     @StateObject private var ipMonitor = IPAddressMonitor()
     @StateObject private var controlPlane = ControlPlaneCoordinator()
     @StateObject private var inferenceRuntime = InferenceRuntime()
+    @StateObject private var volumeButtonMonitor = VolumeButtonMonitor()
     @State private var previewMirrorRelay = PreviewFrameRelay()
+    @State private var isTopGridVisible = false
+    @State private var isControlDeckVisible = false
 
     public init() {}
 
@@ -26,8 +31,11 @@ public struct VinoPhoneShellView: View {
                     ipMonitor: ipMonitor,
                     controlPlane: controlPlane,
                     inferenceRuntime: inferenceRuntime,
+                    volumeButtonMonitor: volumeButtonMonitor,
                     previewMirrorRelay: previewMirrorRelay,
-                    onSyncStatus: syncStatus
+                    onSyncStatus: syncStatus,
+                    onToggleTopGrid: toggleTopGrid,
+                    onToggleControlDeck: toggleControlDeck
                 )
             )
             .modifier(
@@ -75,8 +83,15 @@ public struct VinoPhoneShellView: View {
                 appState: appState,
                 cameraController: cameraController,
                 ipAddresses: ipMonitor.addresses,
-                controlPlane: controlPlane
+                controlPlane: controlPlane,
+                isTopGridVisible: $isTopGridVisible,
+                isControlDeckVisible: $isControlDeckVisible
             )
+
+            HiddenSystemVolumeCaptureView(monitor: volumeButtonMonitor)
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .allowsHitTesting(false)
         }
     }
 
@@ -86,6 +101,18 @@ public struct VinoPhoneShellView: View {
             settings: cameraController.settings,
             ipAddresses: ipMonitor.addresses
         )
+    }
+
+    private func toggleControlDeck() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isControlDeckVisible.toggle()
+        }
+    }
+
+    private func toggleTopGrid() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isTopGridVisible.toggle()
+        }
     }
 }
 
@@ -104,9 +131,9 @@ private final class PreviewFrameRelay {
     private let context = CIContext()
     private var lastFrameSentAt: CFAbsoluteTime = 0
     private var frameIndex = 0
-    private let minInterval: CFAbsoluteTime = 0.35
-    private let maxDimension: CGFloat = 480
-    private let jpegQuality: CGFloat = 0.42
+    private let minInterval: CFAbsoluteTime = 0.1
+    private let maxDimension: CGFloat = 360
+    private let jpegQuality: CGFloat = 0.32
 
     func makePacket(pixelBuffer: CVPixelBuffer) -> PreviewFramePacket? {
         let now = CFAbsoluteTimeGetCurrent()
@@ -143,12 +170,19 @@ private struct VinoRuntimeLifecycleModifier: ViewModifier {
     let ipMonitor: IPAddressMonitor
     let controlPlane: ControlPlaneCoordinator
     let inferenceRuntime: InferenceRuntime
+    let volumeButtonMonitor: VolumeButtonMonitor
     let previewMirrorRelay: PreviewFrameRelay
     let onSyncStatus: () -> Void
+    let onToggleTopGrid: () -> Void
+    let onToggleControlDeck: () -> Void
 
     func body(content: Content) -> some View {
         content
             .task {
+                volumeButtonMonitor.start(
+                    onVolumeUp: onToggleTopGrid,
+                    onVolumeDown: onToggleControlDeck
+                )
                 ipMonitor.start()
                 cameraController.onVideoFrame = { pixelBuffer in
                     guard appState.captureMode == .stream else { return }
@@ -182,6 +216,7 @@ private struct VinoRuntimeLifecycleModifier: ViewModifier {
                 onSyncStatus()
             }
             .onDisappear {
+                volumeButtonMonitor.stop()
                 ipMonitor.stop()
                 cameraController.stop()
                 controlPlane.stop()
@@ -277,5 +312,113 @@ private struct VinoStatusPulseObserverModifier: ViewModifier {
             .onChange(of: appState.activeContext) { _, _ in
                 onSyncStatus()
             }
+    }
+}
+
+private struct HiddenSystemVolumeCaptureView: UIViewRepresentable {
+    let monitor: VolumeButtonMonitor
+
+    func makeUIView(context: Context) -> MPVolumeView {
+        monitor.volumeView
+    }
+
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
+}
+
+private final class VolumeButtonMonitor: ObservableObject {
+    let volumeView: MPVolumeView = {
+        let view = MPVolumeView(frame: .zero)
+        view.showsVolumeSlider = true
+        view.alpha = 0.01
+        view.isUserInteractionEnabled = false
+        return view
+    }()
+
+    private var volumeObservation: NSKeyValueObservation?
+    private weak var volumeSlider: UISlider?
+    private var baselineVolume: Float = 0.55
+    private var onVolumeUp: (() -> Void)?
+    private var onVolumeDown: (() -> Void)?
+    private var isStarted = false
+    private var isAdjustingProgrammatically = false
+
+    func start(
+        onVolumeUp: @escaping () -> Void,
+        onVolumeDown: @escaping () -> Void
+    ) {
+        self.onVolumeUp = onVolumeUp
+        self.onVolumeDown = onVolumeDown
+        guard !isStarted else { return }
+        isStarted = true
+
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.ambient, options: [.mixWithOthers])
+        try? audioSession.setActive(true)
+
+        refreshVolumeSliderIfNeeded()
+        baselineVolume = normalizedVolume(audioSession.outputVolume)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.setSystemVolume(self?.baselineVolume ?? 0.55)
+        }
+
+        volumeObservation = audioSession.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+            guard let self else { return }
+            let changedVolume = change.newValue ?? AVAudioSession.sharedInstance().outputVolume
+            DispatchQueue.main.async {
+                self.handleObservedVolumeChange(changedVolume)
+            }
+        }
+    }
+
+    func stop() {
+        volumeObservation?.invalidate()
+        volumeObservation = nil
+        onVolumeUp = nil
+        onVolumeDown = nil
+        isStarted = false
+    }
+
+    private func handleObservedVolumeChange(_ changedVolume: Float) {
+        guard !isAdjustingProgrammatically else { return }
+        guard abs(changedVolume - baselineVolume) > 0.0001 else { return }
+        let isVolumeUpEvent = changedVolume > baselineVolume
+
+        restoreBaselineVolume()
+        if isVolumeUpEvent {
+            onVolumeUp?()
+        } else {
+            onVolumeDown?()
+        }
+    }
+
+    private func restoreBaselineVolume() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            guard let self else { return }
+            self.setSystemVolume(self.baselineVolume)
+        }
+    }
+
+    private func refreshVolumeSliderIfNeeded() {
+        if volumeSlider == nil {
+            volumeSlider = volumeView.subviews.compactMap { $0 as? UISlider }.first
+        }
+    }
+
+    private func setSystemVolume(_ value: Float) {
+        refreshVolumeSliderIfNeeded()
+        guard let volumeSlider else { return }
+
+        let clampedValue = normalizedVolume(value)
+        isAdjustingProgrammatically = true
+        volumeSlider.setValue(clampedValue, animated: false)
+        volumeSlider.sendActions(for: .valueChanged)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            self?.isAdjustingProgrammatically = false
+        }
+    }
+
+    private func normalizedVolume(_ value: Float) -> Float {
+        min(max(value, 0.15), 0.85)
     }
 }

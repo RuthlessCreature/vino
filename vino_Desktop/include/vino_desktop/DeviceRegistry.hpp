@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -18,6 +19,8 @@ struct DeviceSnapshot {
     bool online {false};
     std::string last_seen {};
     std::string last_message {};
+    std::chrono::steady_clock::time_point last_seen_monotonic {};
+    std::chrono::steady_clock::time_point last_control_seen_monotonic {};
     json::Value hello_payload {};
     json::Value status_payload {};
     json::Value capabilities_payload {};

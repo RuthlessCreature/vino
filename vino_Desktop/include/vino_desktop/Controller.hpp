@@ -73,8 +73,12 @@ private:
     void log(const std::string& level, const std::string& message) const;
     void register_session(const std::shared_ptr<Session>& session);
     void unregister_session(const std::shared_ptr<Session>& session);
+    bool connect_preview_channel(const std::shared_ptr<Session>& session);
+    void close_preview_channel(const std::shared_ptr<Session>& session, bool join_thread, const std::string& reason = {});
     void reader_loop(const std::shared_ptr<Session>& session);
+    void preview_reader_loop(const std::shared_ptr<Session>& session);
     void handle_line(const std::shared_ptr<Session>& session, const std::string& line);
+    void handle_preview_line(const std::shared_ptr<Session>& session, const std::string& line);
     void handle_media_message(const std::string& action, const json::Value& payload, const std::string& device_id, const std::string& timestamp);
     bool send_envelope(const std::shared_ptr<Session>& session, const OutboundOperation& operation, std::string* out_message_id = nullptr);
     std::shared_ptr<Session> session_for_device_id(const std::string& device_id) const;

@@ -8,6 +8,7 @@ namespace vino::desktop {
 
 struct PortMap {
     static constexpr int control = 48920;
+    static constexpr int preview = 48921;
     static constexpr int batch_gateway = 49020;
 };
 
@@ -40,4 +41,3 @@ struct EnvelopeSummary {
 [[nodiscard]] std::string render_context_json(const TriggerContext& context);
 
 } // namespace vino::desktop
-

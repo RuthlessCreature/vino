@@ -91,12 +91,12 @@ clean: CMakeFiles/vino_desktop_app.dir/clean
 CMakeFiles/vino_desktop_core.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=5,6,7,8,9,10,11,12,13,14 "Built target vino_desktop_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=5,6,7,8,9,10,11,12,13,14,15 "Built target vino_desktop_core"
 .PHONY : CMakeFiles/vino_desktop_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/vino_desktop_core.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 11
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/vino_desktop_core.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 0
 .PHONY : CMakeFiles/vino_desktop_core.dir/rule
@@ -108,7 +108,7 @@ vino_desktop_core: CMakeFiles/vino_desktop_core.dir/rule
 # codegen rule for target.
 CMakeFiles/vino_desktop_core.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=5,6,7,8,9,10,11,12,13,14 "Finished codegen for target vino_desktop_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=5,6,7,8,9,10,11,12,13,14,15 "Finished codegen for target vino_desktop_core"
 .PHONY : CMakeFiles/vino_desktop_core.dir/codegen
 
 # clean rule for target.
@@ -128,7 +128,7 @@ CMakeFiles/vino_desktop_blueprint.dir/all: CMakeFiles/vino_desktop_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/vino_desktop_blueprint.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/vino_desktop_blueprint.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 0
 .PHONY : CMakeFiles/vino_desktop_blueprint.dir/rule
@@ -160,7 +160,7 @@ CMakeFiles/vino_desktop_app.dir/all: CMakeFiles/vino_desktop_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/vino_desktop_app.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/vino_desktop_app.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 0
 .PHONY : CMakeFiles/vino_desktop_app.dir/rule

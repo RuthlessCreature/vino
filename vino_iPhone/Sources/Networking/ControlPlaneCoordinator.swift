@@ -8,6 +8,7 @@ public final class ControlPlaneCoordinator: ObservableObject {
     @Published public private(set) var lastStatusJSON: String
 
     private let listenerPort: UInt16 = 48920
+    private let previewListenerPort: UInt16 = 48921
     private let deviceID: String
     private let networkQueue = DispatchQueue(label: "vino.control.listener", qos: .userInitiated)
     private let modelStore = ModelFileStore()
@@ -16,15 +17,19 @@ public final class ControlPlaneCoordinator: ObservableObject {
     private weak var cameraController: CameraSessionController?
     private weak var inferenceRuntime: InferenceRuntime?
     private var listener: NWListener?
+    private var previewListener: NWListener?
     private var peers: [UUID: ControlPeer] = [:]
+    private var previewPeers: [UUID: PreviewPeer] = [:]
     private var heartbeatTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
     private var lastStatusData: Data?
     private var latestIPAddresses: [IPAddressDescriptor] = []
+    private var controlStateText = "待机"
+    private var previewStateText = "待机"
 
     public init() {
         self.deviceID = UUID().uuidString.lowercased()
-        self.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920"
+        self.serviceSummary = "控制 TCP 48920 · 待机 ｜ 预览 TCP 48921 · 待机"
         self.lastStatusJSON = ""
     }
 
@@ -72,11 +77,18 @@ public final class ControlPlaneCoordinator: ObservableObject {
 
         peers.values.forEach { $0.connection.cancel() }
         peers.removeAll()
+        previewPeers.values.forEach { $0.connection.cancel() }
+        previewPeers.removeAll()
         appState?.isConnectedToDesktop = false
+        appState?.remotePostURL = ""
 
         listener?.cancel()
         listener = nil
-        serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已停止"
+        previewListener?.cancel()
+        previewListener = nil
+        controlStateText = "已停止"
+        previewStateText = "已停止"
+        refreshServiceSummary()
     }
 
     public func publishStatus(
@@ -117,13 +129,16 @@ public final class ControlPlaneCoordinator: ObservableObject {
             payload: payload
         )
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-
-        if let data = try? encoder.encode(envelope),
-           let json = String(data: data, encoding: .utf8) {
+        let displayEncoder = JSONEncoder()
+        displayEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let displayData = try? displayEncoder.encode(envelope),
+           let json = String(data: displayData, encoding: .utf8) {
             lastStatusJSON = json
-            lastStatusData = Data((json + "\n").utf8)
+        }
+
+        let wireEncoder = JSONEncoder()
+        if let wireData = try? wireEncoder.encode(envelope) {
+            lastStatusData = wireData + Data([0x0A])
             broadcast(rawData: lastStatusData)
         }
     }
@@ -133,39 +148,79 @@ public final class ControlPlaneCoordinator: ObservableObject {
     }
 
     private func startListenerIfNeeded(serviceName: String) {
-        guard listener == nil else { return }
+        if listener == nil {
+            do {
+                let parameters = NWParameters.tcp
+                let port = NWEndpoint.Port(rawValue: listenerPort) ?? .init(integerLiteral: 48920)
+                let listener = try NWListener(using: parameters, on: port)
 
-        do {
-            let parameters = NWParameters.tcp
-            let port = NWEndpoint.Port(rawValue: listenerPort) ?? .init(integerLiteral: 48920)
-            let listener = try NWListener(using: parameters, on: port)
-
-            listener.service = NWListener.Service(name: serviceName, type: "_vino-control._tcp")
-            listener.stateUpdateHandler = { [weak self] state in
-                Task { @MainActor [weak self] in
-                    switch state {
-                    case .ready:
-                        self?.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已就绪"
-                    case .failed(let error):
-                        self?.serviceSummary = "局域网服务 _vino-control._tcp · 启动失败 · \(error.localizedDescription)"
-                    case .cancelled:
-                        self?.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已停止"
-                    default:
-                        break
+                listener.service = NWListener.Service(name: serviceName, type: "_vino-control._tcp")
+                listener.stateUpdateHandler = { [weak self] state in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        switch state {
+                        case .ready:
+                            self.controlStateText = "已就绪"
+                        case .failed(let error):
+                            self.controlStateText = "启动失败 · \(error.localizedDescription)"
+                        case .cancelled:
+                            self.controlStateText = "已停止"
+                        default:
+                            break
+                        }
+                        self.refreshServiceSummary()
                     }
                 }
-            }
 
-            listener.newConnectionHandler = { [weak self] connection in
-                Task { @MainActor [weak self] in
-                    self?.accept(connection)
+                listener.newConnectionHandler = { [weak self] connection in
+                    Task { @MainActor [weak self] in
+                        self?.accept(connection)
+                    }
                 }
-            }
 
-            listener.start(queue: networkQueue)
-            self.listener = listener
-        } catch {
-            serviceSummary = "局域网服务 _vino-control._tcp · 启动失败"
+                listener.start(queue: networkQueue)
+                self.listener = listener
+            } catch {
+                controlStateText = "启动失败"
+                refreshServiceSummary()
+            }
+        }
+
+        if previewListener == nil {
+            do {
+                let parameters = NWParameters.tcp
+                let port = NWEndpoint.Port(rawValue: previewListenerPort) ?? .init(integerLiteral: 48921)
+                let previewListener = try NWListener(using: parameters, on: port)
+
+                previewListener.stateUpdateHandler = { [weak self] state in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        switch state {
+                        case .ready:
+                            self.previewStateText = "已就绪"
+                        case .failed(let error):
+                            self.previewStateText = "启动失败 · \(error.localizedDescription)"
+                        case .cancelled:
+                            self.previewStateText = "已停止"
+                        default:
+                            break
+                        }
+                        self.refreshServiceSummary()
+                    }
+                }
+
+                previewListener.newConnectionHandler = { [weak self] connection in
+                    Task { @MainActor [weak self] in
+                        self?.acceptPreview(connection)
+                    }
+                }
+
+                previewListener.start(queue: networkQueue)
+                self.previewListener = previewListener
+            } catch {
+                previewStateText = "启动失败"
+                refreshServiceSummary()
+            }
         }
     }
 
@@ -180,7 +235,11 @@ public final class ControlPlaneCoordinator: ObservableObject {
                 switch state {
                 case .ready:
                     self.appState?.isConnectedToDesktop = true
-                    self.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已连接 \(self.peers.count) 台上位机"
+                    if let desktopURL = self.inferredDesktopPostURL(from: connection) {
+                        self.appState?.remotePostURL = desktopURL
+                    }
+                    self.controlStateText = "已连接 \(self.peers.count) 台上位机"
+                    self.refreshServiceSummary()
                     self.sendHello(to: peerID)
                     self.sendCapabilities(to: peerID)
                     if let data = self.lastStatusData {
@@ -189,7 +248,11 @@ public final class ControlPlaneCoordinator: ObservableObject {
                 case .failed, .cancelled:
                     self.peers.removeValue(forKey: peerID)
                     self.appState?.isConnectedToDesktop = !self.peers.isEmpty
-                    self.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已连接 \(self.peers.count) 台上位机"
+                    if self.peers.isEmpty {
+                        self.appState?.remotePostURL = ""
+                    }
+                    self.controlStateText = self.peers.isEmpty ? "已就绪" : "已连接 \(self.peers.count) 台上位机"
+                    self.refreshServiceSummary()
                 default:
                     break
                 }
@@ -216,13 +279,42 @@ public final class ControlPlaneCoordinator: ObservableObject {
                     peer.connection.cancel()
                     self.peers.removeValue(forKey: peerID)
                     self.appState?.isConnectedToDesktop = !self.peers.isEmpty
-                    self.serviceSummary = "局域网服务 _vino-control._tcp · TCP 48920 · 已连接 \(self.peers.count) 台上位机"
+                    if self.peers.isEmpty {
+                        self.appState?.remotePostURL = ""
+                    }
+                    self.controlStateText = self.peers.isEmpty ? "已就绪" : "已连接 \(self.peers.count) 台上位机"
+                    self.refreshServiceSummary()
                     return
                 }
 
                 self.receiveNext(from: peerID)
             }
         }
+    }
+
+    private func acceptPreview(_ connection: NWConnection) {
+        let peerID = UUID()
+        let peer = PreviewPeer(id: peerID, connection: connection)
+        previewPeers[peerID] = peer
+
+        connection.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch state {
+                case .ready:
+                    self.previewStateText = "已连接 \(self.previewPeers.count) 路预览"
+                    self.refreshServiceSummary()
+                case .failed, .cancelled:
+                    self.previewPeers.removeValue(forKey: peerID)
+                    self.previewStateText = self.previewPeers.isEmpty ? "已就绪" : "已连接 \(self.previewPeers.count) 路预览"
+                    self.refreshServiceSummary()
+                default:
+                    break
+                }
+            }
+        }
+
+        connection.start(queue: networkQueue)
     }
 
     private func drainBuffer(for peerID: UUID) {
@@ -568,7 +660,7 @@ public final class ControlPlaneCoordinator: ObservableObject {
         guard let appState, let cameraController else { return }
 
         let envelope = VinoEnvelope(
-            kind: .reply,
+            kind: .status,
             action: "camera.capabilities.report",
             source: VinoSource(role: "iphone", deviceID: deviceID, name: appState.deviceName),
             payload: CapabilitiesReportPayload(
@@ -658,7 +750,7 @@ public final class ControlPlaneCoordinator: ObservableObject {
     }
 
     public func publishPreviewFrameJPEG(_ data: Data, imageWidth: Int, imageHeight: Int, frameIndex: Int) {
-        guard let appState, !peers.isEmpty, appState.captureMode == .stream else { return }
+        guard let appState, !previewPeers.isEmpty, appState.captureMode == .stream else { return }
 
         let envelope = VinoEnvelope(
             kind: .status,
@@ -678,11 +770,13 @@ public final class ControlPlaneCoordinator: ObservableObject {
             )
         )
 
-        sendEnvelope(envelope, to: nil)
+        let encoder = JSONEncoder()
+        guard let wireData = try? encoder.encode(envelope) else { return }
+        broadcastPreview(rawData: wireData + Data([0x0A]))
     }
 
     private func pushMedia(url: URL, category: String) async {
-        guard let appState, appState.persistMediaEnabled || !peers.isEmpty else { return }
+        guard let appState, appState.persistMediaEnabled, !peers.isEmpty else { return }
         guard let data = try? Data(contentsOf: url) else { return }
 
         let transferID = UUID().uuidString.uppercased()
@@ -796,9 +890,36 @@ public final class ControlPlaneCoordinator: ObservableObject {
         }
     }
 
+    private func broadcastPreview(rawData: Data) {
+        for peerID in previewPeers.keys {
+            sendPreview(rawData: rawData, to: peerID)
+        }
+    }
+
     private func send(rawData: Data, to peerID: UUID) {
         guard let peer = peers[peerID] else { return }
         peer.connection.send(content: rawData, completion: .contentProcessed { _ in })
+    }
+
+    private func sendPreview(rawData: Data, to peerID: UUID) {
+        guard let peer = previewPeers[peerID] else { return }
+        peer.connection.send(content: rawData, completion: .contentProcessed { _ in })
+    }
+
+    private func refreshServiceSummary() {
+        serviceSummary = "控制 TCP \(listenerPort) · \(controlStateText) ｜ 预览 TCP \(previewListenerPort) · \(previewStateText)"
+    }
+
+    private func inferredDesktopPostURL(from connection: NWConnection) -> String? {
+        guard case let .hostPort(host, _) = connection.endpoint else {
+            return nil
+        }
+
+        let hostText = host.debugDescription
+        let formattedHost = hostText.contains(":") && !hostText.hasPrefix("[")
+            ? "[\(hostText)]"
+            : hostText
+        return "http://\(formattedHost):49020/api/v1/ingest"
     }
 }
 
@@ -806,6 +927,16 @@ private final class ControlPeer {
     let id: UUID
     let connection: NWConnection
     var buffer = Data()
+
+    init(id: UUID, connection: NWConnection) {
+        self.id = id
+        self.connection = connection
+    }
+}
+
+private final class PreviewPeer {
+    let id: UUID
+    let connection: NWConnection
 
     init(id: UUID, connection: NWConnection) {
         self.id = id

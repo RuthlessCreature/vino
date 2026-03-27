@@ -203,6 +203,30 @@ src/core/DeviceRegistry.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.s
 .PHONY : src/core/DeviceRegistry.cpp.s
 
+src/core/RuntimePaths.o: src/core/RuntimePaths.cpp.o
+.PHONY : src/core/RuntimePaths.o
+
+# target to build an object file
+src/core/RuntimePaths.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o
+.PHONY : src/core/RuntimePaths.cpp.o
+
+src/core/RuntimePaths.i: src/core/RuntimePaths.cpp.i
+.PHONY : src/core/RuntimePaths.i
+
+# target to preprocess a source file
+src/core/RuntimePaths.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.i
+.PHONY : src/core/RuntimePaths.cpp.i
+
+src/core/RuntimePaths.s: src/core/RuntimePaths.cpp.s
+.PHONY : src/core/RuntimePaths.s
+
+# target to generate assembly for a file
+src/core/RuntimePaths.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.s
+.PHONY : src/core/RuntimePaths.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -420,6 +444,9 @@ help:
 	@echo "... src/core/DeviceRegistry.o"
 	@echo "... src/core/DeviceRegistry.i"
 	@echo "... src/core/DeviceRegistry.s"
+	@echo "... src/core/RuntimePaths.o"
+	@echo "... src/core/RuntimePaths.i"
+	@echo "... src/core/RuntimePaths.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"

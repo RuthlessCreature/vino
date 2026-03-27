@@ -3,6 +3,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/vino_desktop_core.dir/src/core/Blueprint.cpp.o.d"
   "CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.o"
   "CMakeFiles/vino_desktop_core.dir/src/core/DeviceRegistry.cpp.o.d"
+  "CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o"
+  "CMakeFiles/vino_desktop_core.dir/src/core/RuntimePaths.cpp.o.d"
   "CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o"
   "CMakeFiles/vino_desktop_core.dir/src/network/BatchGateway.cpp.o.d"
   "CMakeFiles/vino_desktop_core.dir/src/network/Controller.cpp.o"

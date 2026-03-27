@@ -5,8 +5,8 @@ public struct CameraOverlayView: View {
     @ObservedObject private var cameraController: CameraSessionController
     @ObservedObject private var controlPlane: ControlPlaneCoordinator
 
-    @State private var isTopPanelExpanded = false
-    @State private var isControlDeckExpanded = true
+    @Binding private var isTopGridVisible: Bool
+    @Binding private var isControlDeckVisible: Bool
 
     private let ipAddresses: [IPAddressDescriptor]
 
@@ -14,106 +14,184 @@ public struct CameraOverlayView: View {
         appState: VinoAppState,
         cameraController: CameraSessionController,
         ipAddresses: [IPAddressDescriptor],
-        controlPlane: ControlPlaneCoordinator
+        controlPlane: ControlPlaneCoordinator,
+        isTopGridVisible: Binding<Bool>,
+        isControlDeckVisible: Binding<Bool>
     ) {
         self._appState = ObservedObject(wrappedValue: appState)
         self._cameraController = ObservedObject(wrappedValue: cameraController)
         self._controlPlane = ObservedObject(wrappedValue: controlPlane)
+        self._isTopGridVisible = isTopGridVisible
+        self._isControlDeckVisible = isControlDeckVisible
         self.ipAddresses = ipAddresses
     }
 
     public var body: some View {
         GeometryReader { geometry in
-            VStack(spacing: 10) {
-                topPanel(width: geometry.size.width)
+            let overlayWidth = min(max(geometry.size.width - 20, 0), 760)
+
+            ZStack(alignment: .top) {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    topStatusBar(width: overlayWidth)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 8)
+
+                VStack(spacing: 8) {
+                    if isTopGridVisible {
+                        HStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            topInfoGrid(width: overlayWidth)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.top, 48)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                VStack {
+                    Spacer(minLength: 0)
+
+                    if isControlDeckVisible {
+                        HStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            controlDeck(width: overlayWidth, height: geometry.size.height)
+                            Spacer(minLength: 0)
+                        }
+                            .padding(.bottom, 10)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.18), value: isControlDeckVisible)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func topStatusBar(width: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            Text(appState.deviceName)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Divider()
+                .frame(height: 12)
+                .overlay(.white.opacity(0.14))
+
+            Text(primaryIPText)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            Spacer(minLength: 0)
+
+            topChip(appState.isConnectedToDesktop ? "已连接" : "未连接", color: appState.isConnectedToDesktop ? VinoTheme.success : .white.opacity(0.45))
+            topChip(appState.captureMode.label, color: VinoTheme.accent)
+
+            if appState.inferenceEnabled {
+                topChip("推理", color: VinoTheme.success)
+            }
+
+            if appState.isRecording {
+                topChip("录制中", color: VinoTheme.danger)
+            }
+
+            topChip(isControlDeckVisible ? "控制台开" : "控制台关", color: isControlDeckVisible ? VinoTheme.warning : .white.opacity(0.45))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.22), in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(VinoTheme.panelStroke.opacity(0.86), lineWidth: 1)
+        )
+        .frame(width: width, alignment: .center)
+    }
+
+    private func topInfoGrid(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("设备信息")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
 
                 Spacer(minLength: 0)
 
-                controlDeck(width: geometry.size.width, height: geometry.size.height)
+                Text("音量+ 隐藏")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(VinoTheme.textSecondary)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
 
-    private func topPanel(width: CGFloat) -> some View {
-        collapsiblePanel(
-            title: appState.deviceName,
-            subtitle: "状态 / 网络",
-            summary: topSummary,
-            isExpanded: $isTopPanelExpanded,
-            fillOpacity: 0.34
-        ) {
-            topPanelContent(width: width)
-        }
-    }
+            let gridColumns = [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ]
 
-    @ViewBuilder
-    private func topPanelContent(width: CGFloat) -> some View {
-        if width > 560 {
-            HStack(alignment: .top, spacing: 8) {
-                statusBlock
-                networkBlock
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                statusBlock
-                networkBlock
-            }
-        }
-    }
-
-    private var statusBlock: some View {
-        infoBlock(title: "状态") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    statePill("连接", value: appState.isConnectedToDesktop ? "已连" : "未连", color: appState.isConnectedToDesktop ? VinoTheme.success : .white.opacity(0.45))
-                    statePill("模式", value: appState.captureMode.label, color: VinoTheme.accent)
-                    statePill("对焦", value: appState.focusMode == .continuousAuto ? "自动" : "锁定", color: .white)
-                    statePill("录制", value: appState.isRecording ? "开启" : "关闭", color: appState.isRecording ? VinoTheme.danger : .white.opacity(0.45))
-                    statePill("推理", value: appState.inferenceEnabled ? "开启" : "关闭", color: appState.inferenceEnabled ? VinoTheme.success : .white.opacity(0.45))
+            LazyVGrid(columns: gridColumns, spacing: 8) {
+                infoCard(title: "状态") {
+                    infoLine("连接", appState.isConnectedToDesktop ? "已连接上位机" : "未连接上位机")
+                    infoLine("模式", appState.captureMode.label)
+                    infoLine("推理", appState.inferenceEnabled ? "开启" : "关闭")
+                    infoLine("录制", appState.isRecording ? "进行中" : "待机")
+                    infoLine("最近状态", appState.lastStatusMessage)
                 }
 
-                compactInfoLine("当前状态", value: appState.lastStatusMessage)
-                compactInfoLine("最近文件", value: cameraController.lastCapturedFileURL?.lastPathComponent ?? "暂无本地媒体")
+                infoCard(title: "网络") {
+                    infoLine("主 IP", primaryIPText)
+                    infoLine("全部 IP", ipAddresses.isEmpty ? "等待网络" : ipAddresses.map(\.displayValue).joined(separator: "  |  "))
+                    infoLine("服务", controlPlane.serviceSummary)
+                    infoLine("模型", activeModelSummary)
+                }
             }
         }
-    }
-
-    private var networkBlock: some View {
-        infoBlock(title: "网络") {
-            VStack(alignment: .leading, spacing: 8) {
-                compactInfoLine(
-                    "IP 地址",
-                    value: ipAddresses.isEmpty ? "等待网络接口..." : ipAddresses.map(\.displayValue).joined(separator: "  |  ")
-                )
-                compactInfoLine("服务状态", value: controlPlane.serviceSummary)
-                compactInfoLine("远程上下文", value: contextSummary)
-                compactInfoLine("当前模型", value: activeModelSummary)
-            }
-        }
+        .padding(10)
+        .background(Color.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(VinoTheme.panelStroke.opacity(0.92), lineWidth: 1)
+        )
+        .frame(width: width, alignment: .center)
     }
 
     private func controlDeck(width: CGFloat, height: CGFloat) -> some View {
         let supportedProfiles = cameraController.capabilities.supportsProRes
             ? RecordingProfile.allCases
             : RecordingProfile.allCases.filter { $0 != .proRes }
+        let contentWidth = max(width - 20, 0)
 
         let columns = [
-            GridItem(.flexible(minimum: max(140, (width - 40) / 2)), spacing: 8),
-            GridItem(.flexible(minimum: max(140, (width - 40) / 2)), spacing: 8)
+            GridItem(.flexible(minimum: max(140, (contentWidth - 8) / 2)), spacing: 8),
+            GridItem(.flexible(minimum: max(140, (contentWidth - 8) / 2)), spacing: 8)
         ]
 
-        return collapsiblePanel(
-            title: "控制台",
-            subtitle: "相机参数 / 触发 / 上下文",
-            summary: controlDeckSummary,
-            isExpanded: $isControlDeckExpanded,
-            fillOpacity: 0.42
-        ) {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("控制台")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+
+                    Text(controlDeckSummary)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("音量- 隐藏")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(VinoTheme.textSecondary)
+            }
+
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top, spacing: 8) {
@@ -144,7 +222,7 @@ public struct CameraOverlayView: View {
                                     cameraController.triggerPrimaryAction(appState: appState)
                                 }
 
-                                compactActionButton(title: "刷新能力", color: .white.opacity(0.12), foreground: .white) {
+                                compactActionButton(title: "重读能力", color: .white.opacity(0.12), foreground: .white) {
                                     cameraController.refreshCapabilities(appState: appState)
                                 }
                             }
@@ -175,22 +253,9 @@ public struct CameraOverlayView: View {
                         compactToggle(title: "推送媒体", isOn: $appState.persistMediaEnabled)
                     }
 
-                    compactTextField("产品 UUID", text: $appState.activeContext.productUUID, keyboard: .default)
-
-                    HStack(spacing: 8) {
-                        compactTextField(
-                            "点位号",
-                            text: Binding(
-                                get: { String(appState.activeContext.pointIndex) },
-                                set: { appState.activeContext.pointIndex = Int($0) ?? 0 }
-                            ),
-                            keyboard: .numberPad
-                        )
-
-                        compactTextField("任务 ID", text: $appState.activeContext.jobID, keyboard: .default)
-                    }
-
-                    compactTextField("远程 POST 地址", text: $appState.remotePostURL, keyboard: .URL)
+                    compactInfoStrip(title: "状态", value: appState.lastStatusMessage)
+                    compactInfoStrip(title: "模型", value: activeModelSummary)
+                    compactInfoStrip(title: "最近文件", value: cameraController.lastCapturedFileURL?.lastPathComponent ?? "暂无")
 
                     LazyVGrid(columns: columns, spacing: 8) {
                         CompactAdjustableControlCard(
@@ -267,15 +332,21 @@ public struct CameraOverlayView: View {
                         }
                     }
                 }
+                .frame(width: contentWidth, alignment: .top)
             }
-            .frame(maxHeight: min(max(height * 0.48, 220), 360))
+            .frame(maxHeight: min(max(height * 0.44, 210), 340))
         }
-        .frame(maxWidth: .infinity, alignment: .bottom)
+        .padding(10)
+        .background(Color.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(VinoTheme.panelStroke.opacity(0.92), lineWidth: 1)
+        )
+        .frame(width: width, alignment: .center)
     }
 
-    private var topSummary: String {
-        let link = appState.isConnectedToDesktop ? "已连接上位机" : "未连接上位机"
-        return "\(link) · \(appState.captureMode.label) · \(appState.lastStatusMessage)"
+    private var primaryIPText: String {
+        ipAddresses.first?.displayValue ?? "等待网络"
     }
 
     private var controlDeckSummary: String {
@@ -301,93 +372,7 @@ public struct CameraOverlayView: View {
             return "未启用模型"
         }
 
-        return activeModels
-            .map { "\($0.name)@\($0.version)" }
-            .joined(separator: "  |  ")
-    }
-
-    private var contextSummary: String {
-        let product = appState.activeContext.productUUID.isEmpty ? "未设置" : appState.activeContext.productUUID
-        let job = appState.activeContext.jobID.isEmpty ? "未设置" : appState.activeContext.jobID
-        return "产品：\(product)  |  点位：\(appState.activeContext.pointIndex)  |  任务：\(job)"
-    }
-
-    private func collapsiblePanel<Content: View>(
-        title: String,
-        subtitle: String,
-        summary: String,
-        isExpanded: Binding<Bool>,
-        fillOpacity: Double,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-
-                        Text(subtitle)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(VinoTheme.textSecondary)
-
-                        Text(summary)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.82))
-                            .lineLimit(isExpanded.wrappedValue ? 2 : 1)
-                            .minimumScaleFactor(0.7)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(VinoTheme.panelStroke, lineWidth: 1)
-                        )
-                }
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded.wrappedValue {
-                content()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(10)
-        .background(Color.black.opacity(fillOpacity), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(VinoTheme.panelStroke.opacity(0.92), lineWidth: 1)
-        )
-    }
-
-    private func infoBlock<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle(title)
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(8)
-        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(VinoTheme.panelStroke.opacity(0.82), lineWidth: 1)
-        )
+        return activeModels.map { "\($0.name)@\($0.version)" }.joined(separator: "  |  ")
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -397,8 +382,62 @@ public struct CameraOverlayView: View {
             .foregroundStyle(VinoTheme.textSecondary)
     }
 
-    private func compactInfoLine(_ title: String, value: String) -> some View {
+    private func topChip(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(.black.opacity(0.28), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(color.opacity(0.22), lineWidth: 1)
+            )
+    }
+
+    private func compactInfoStrip(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.42))
+
+            Text(value)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(VinoTheme.panelStroke, lineWidth: 1)
+        )
+    }
+
+    private func infoCard<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionTitle(title)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(8)
+        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(VinoTheme.panelStroke.opacity(0.86), lineWidth: 1)
+        )
+    }
+
+    private func infoLine(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.42))
@@ -409,27 +448,6 @@ public struct CameraOverlayView: View {
                 .lineLimit(3)
                 .minimumScaleFactor(0.7)
         }
-    }
-
-    private func statePill(_ title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.45))
-
-            Text(value)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(color.opacity(0.22), lineWidth: 1)
-        )
     }
 
     private func compactActionButton(
@@ -484,32 +502,6 @@ public struct CameraOverlayView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-    }
-
-    private func compactTextField(
-        _ title: String,
-        text: Binding<String>,
-        keyboard: UIKeyboardType
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.42))
-
-            TextField(title, text: text)
-                .keyboardType(keyboard)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(VinoTheme.panelStroke, lineWidth: 1)
-                )
-        }
     }
 
     private func compactSelectionGroup<Item: Identifiable & Hashable>(

@@ -26,6 +26,7 @@ public:
     void stop();
 
     bool connect_host(const std::string& host, int port = PortMap::control);
+    int scan_prefix(const std::string& prefix, int start, int end, int port = PortMap::control);
     void scan_prefix_async(const std::string& prefix, int start, int end, int port = PortMap::control);
 
     std::vector<DeviceSnapshot> snapshots() const;

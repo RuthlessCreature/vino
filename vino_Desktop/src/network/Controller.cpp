@@ -1,4 +1,5 @@
 #include "vino_desktop/Controller.hpp"
+#include "vino_desktop/RuntimePaths.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -54,6 +55,38 @@ void close_socket(socket_handle handle) {
 #endif
 }
 
+bool set_socket_blocking_mode(socket_handle handle, bool blocking) {
+#if defined(_WIN32)
+    u_long mode = blocking ? 0UL : 1UL;
+    return ioctlsocket(handle, FIONBIO, &mode) == 0;
+#else
+    const int flags = fcntl(handle, F_GETFL, 0);
+    if (flags < 0) {
+        return false;
+    }
+
+    const int next_flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+    return fcntl(handle, F_SETFL, next_flags) == 0;
+#endif
+}
+
+bool socket_connect_succeeded(socket_handle handle) {
+    int error = 0;
+    socklen_t error_size = static_cast<socklen_t>(sizeof(error));
+    if (getsockopt(handle, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&error), &error_size) != 0) {
+        return false;
+    }
+    return error == 0;
+}
+
+void configure_connected_socket(socket_handle handle) {
+    (void)set_socket_blocking_mode(handle, true);
+#if defined(SO_NOSIGPIPE)
+    const int value = 1;
+    setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &value, static_cast<socklen_t>(sizeof(value)));
+#endif
+}
+
 socket_handle connect_with_timeout(const std::string& host, int port, int timeout_ms) {
     addrinfo hints {};
     hints.ai_family = AF_UNSPEC;
@@ -73,13 +106,14 @@ socket_handle connect_with_timeout(const std::string& host, int port, int timeou
             continue;
         }
 
-#if !defined(_WIN32)
-        const int flags = fcntl(handle, F_GETFL, 0);
-        fcntl(handle, F_SETFL, flags | O_NONBLOCK);
-#endif
+        if (!set_socket_blocking_mode(handle, false)) {
+            close_socket(handle);
+            continue;
+        }
 
         const int status = ::connect(handle, pointer->ai_addr, static_cast<socklen_t>(pointer->ai_addrlen));
         if (status == 0) {
+            configure_connected_socket(handle);
             connected = handle;
             break;
         }
@@ -106,7 +140,8 @@ socket_handle connect_with_timeout(const std::string& host, int port, int timeou
         timeout.tv_usec = (timeout_ms % 1000) * 1000;
 
         const int ready = select(handle + 1, nullptr, &write_set, nullptr, &timeout);
-        if (ready > 0 && FD_ISSET(handle, &write_set)) {
+        if (ready > 0 && FD_ISSET(handle, &write_set) && socket_connect_succeeded(handle)) {
+            configure_connected_socket(handle);
             connected = handle;
             break;
         }
@@ -228,8 +263,22 @@ struct DesktopController::Session {
     std::atomic<bool> running {true};
     std::thread reader_thread {};
     mutable std::mutex write_mutex {};
+    socket_handle preview_socket {invalid_socket_handle};
+    std::atomic<bool> preview_running {false};
+    std::thread preview_reader_thread {};
+    mutable std::mutex preview_mutex {};
     std::string device_id {};
     std::string buffer {};
+    std::string preview_buffer {};
+
+    ~Session() {
+        if (reader_thread.joinable()) {
+            reader_thread.detach();
+        }
+        if (preview_reader_thread.joinable()) {
+            preview_reader_thread.detach();
+        }
+    }
 };
 
 struct DesktopController::FileAssembly {
@@ -253,18 +302,26 @@ DesktopController::~DesktopController() {
 }
 
 bool DesktopController::connect_to_device(const std::string& host, int port) {
+    std::shared_ptr<Session> existing_session;
     {
         std::scoped_lock lock(sessions_mutex_);
         const auto key = host + ":" + std::to_string(port);
         if (const auto iterator = sessions_by_host_.find(key); iterator != sessions_by_host_.end()) {
             if (iterator->second && iterator->second->running) {
-                log("INFO", "already connected to " + key);
-                return true;
+                existing_session = iterator->second;
             }
         }
     }
 
-    const auto socket = connect_with_timeout(host, port, 250);
+    if (existing_session) {
+        if (!connect_preview_channel(existing_session)) {
+            log("WARN", "设备预览通道未连接 " + host + ":" + std::to_string(PortMap::preview));
+        }
+        log("INFO", "已连接设备 " + host + ":" + std::to_string(port));
+        return true;
+    }
+
+    const auto socket = connect_with_timeout(host, port, 800);
     if (socket == invalid_socket_handle) {
         return false;
     }
@@ -281,19 +338,118 @@ bool DesktopController::connect_to_device(const std::string& host, int port) {
         reader_loop(session);
     });
 
-    log("INFO", "connected to " + host + ":" + std::to_string(port));
+    if (!connect_preview_channel(session)) {
+        log("WARN", "设备预览通道连接失败 " + host + ":" + std::to_string(PortMap::preview));
+    }
+
+    log("INFO", "设备连接成功 " + host + ":" + std::to_string(port));
     return true;
 }
 
-int DesktopController::scan_prefix(const std::string& prefix, int start, int end, int port) {
-    int found = 0;
-    for (int value = start; value <= end; ++value) {
-        const auto host = prefix + "." + std::to_string(value);
-        if (connect_to_device(host, port)) {
-            ++found;
+bool DesktopController::connect_preview_channel(const std::shared_ptr<Session>& session) {
+    {
+        std::scoped_lock lock(session->preview_mutex);
+        if (session->preview_running && session->preview_socket != invalid_socket_handle) {
+            return true;
         }
     }
-    return found;
+
+    const auto preview_socket = connect_with_timeout(session->host, PortMap::preview, 500);
+    if (preview_socket == invalid_socket_handle) {
+        return false;
+    }
+
+    if (session->preview_reader_thread.joinable()) {
+        session->preview_reader_thread.join();
+    }
+
+    {
+        std::scoped_lock lock(session->preview_mutex);
+        if (!session->running) {
+            close_socket(preview_socket);
+            return false;
+        }
+
+        if (session->preview_running && session->preview_socket != invalid_socket_handle) {
+            close_socket(preview_socket);
+            return true;
+        }
+
+        session->preview_socket = preview_socket;
+        session->preview_running = true;
+        session->preview_buffer.clear();
+    }
+
+    session->preview_reader_thread = std::thread([this, session] {
+        preview_reader_loop(session);
+    });
+
+    log("INFO", "设备预览通道已连接 " + session->host + ":" + std::to_string(PortMap::preview));
+    return true;
+}
+
+void DesktopController::close_preview_channel(const std::shared_ptr<Session>& session, bool join_thread, const std::string& reason) {
+    const bool was_running = session->preview_running.exchange(false);
+
+    {
+        std::scoped_lock lock(session->preview_mutex);
+        if (session->preview_socket != invalid_socket_handle) {
+            close_socket(session->preview_socket);
+            session->preview_socket = invalid_socket_handle;
+        }
+        session->preview_buffer.clear();
+    }
+
+    if (join_thread && session->preview_reader_thread.joinable()) {
+        if (session->preview_reader_thread.get_id() == std::this_thread::get_id()) {
+            session->preview_reader_thread.detach();
+        } else {
+            session->preview_reader_thread.join();
+        }
+    }
+
+    if (was_running && !reason.empty()) {
+        log("WARN", reason);
+    }
+}
+
+int DesktopController::scan_prefix(const std::string& prefix, int start, int end, int port) {
+    if (end < start) {
+        return 0;
+    }
+
+    const int total = end - start + 1;
+    const unsigned concurrency_hint = std::thread::hardware_concurrency();
+    const int worker_count = std::max(1, std::min(total, static_cast<int>(concurrency_hint == 0 ? 16 : std::min(concurrency_hint * 2, 32U))));
+
+    std::atomic<int> next_value {start};
+    std::atomic<int> found {0};
+    std::vector<std::thread> workers;
+    workers.reserve(static_cast<std::size_t>(worker_count));
+
+    for (int worker_index = 0; worker_index < worker_count; ++worker_index) {
+        workers.emplace_back([&, prefix, end, port] {
+            while (true) {
+                const int value = next_value.fetch_add(1);
+                if (value > end) {
+                    break;
+                }
+
+                const auto host = prefix + "." + std::to_string(value);
+                if (connect_to_device(host, port)) {
+                    found.fetch_add(1);
+                }
+            }
+        });
+    }
+
+    for (auto& worker : workers) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+
+    return found.load();
 }
 
 json::Value DesktopController::dispatch(const OutboundOperation& operation) {
@@ -376,7 +532,7 @@ json::Value DesktopController::install_model(
                 .stage = "begin",
                 .local_status = "queued",
                 .remote_status = "pending",
-                .remote_message = "waiting for device reply",
+                .remote_message = "等待设备回执",
                 .updated_at = DesktopController::timestamp_now(),
                 .byte_count = byte_count,
                 .bytes_sent = 0,
@@ -472,7 +628,7 @@ json::Value DesktopController::install_model(
                 "failed",
                 "send_failed",
                 "send_failed",
-                "desktop failed while streaming model payload",
+                "桌面端在模型传输过程中发生错误",
                 true
             );
         }
@@ -541,7 +697,14 @@ void DesktopController::stop() {
 
     for (const auto& session : sessions) {
         session->running = false;
-        close_socket(session->socket);
+        close_preview_channel(session, true);
+        {
+            std::scoped_lock lock(session->write_mutex);
+            if (session->socket != invalid_socket_handle) {
+                close_socket(session->socket);
+                session->socket = invalid_socket_handle;
+            }
+        }
         if (session->reader_thread.joinable()) {
             session->reader_thread.join();
         }
@@ -595,10 +758,83 @@ void DesktopController::reader_loop(const std::shared_ptr<Session>& session) {
         }
     }
 
+    session->running = false;
+    close_preview_channel(
+        session,
+        true,
+        "设备预览通道已断开 " + session->host + ":" + std::to_string(PortMap::preview)
+    );
     registry_.mark_disconnected_host(session->host, session->port);
     unregister_session(session);
-    close_socket(session->socket);
-    log("WARN", "disconnected from " + session->host + ":" + std::to_string(session->port));
+    {
+        std::scoped_lock lock(session->write_mutex);
+        if (session->socket != invalid_socket_handle) {
+            close_socket(session->socket);
+            session->socket = invalid_socket_handle;
+        }
+    }
+    log("WARN", "设备已断开 " + session->host + ":" + std::to_string(session->port));
+}
+
+void DesktopController::preview_reader_loop(const std::shared_ptr<Session>& session) {
+    char read_buffer[16 * 1024];
+
+    while (session->running && session->preview_running) {
+        socket_handle preview_socket = invalid_socket_handle;
+        {
+            std::scoped_lock lock(session->preview_mutex);
+            preview_socket = session->preview_socket;
+        }
+
+        if (preview_socket == invalid_socket_handle) {
+            break;
+        }
+
+        const auto bytes_read = recv(preview_socket, read_buffer, sizeof(read_buffer), 0);
+        if (bytes_read <= 0) {
+            break;
+        }
+
+        std::vector<std::string> lines;
+        {
+            std::scoped_lock lock(session->preview_mutex);
+            session->preview_buffer.append(read_buffer, read_buffer + bytes_read);
+
+            while (true) {
+                const auto newline = session->preview_buffer.find('\n');
+                if (newline == std::string::npos) {
+                    break;
+                }
+
+                std::string line = session->preview_buffer.substr(0, newline);
+                session->preview_buffer.erase(0, newline + 1);
+                if (!line.empty() && line.back() == '\r') {
+                    line.pop_back();
+                }
+                if (!line.empty()) {
+                    lines.push_back(std::move(line));
+                }
+            }
+        }
+
+        for (const auto& line : lines) {
+            handle_preview_line(session, line);
+        }
+    }
+
+    const bool was_running = session->preview_running.exchange(false);
+    {
+        std::scoped_lock lock(session->preview_mutex);
+        if (session->preview_socket != invalid_socket_handle) {
+            close_socket(session->preview_socket);
+            session->preview_socket = invalid_socket_handle;
+        }
+        session->preview_buffer.clear();
+    }
+
+    if (was_running && session->running) {
+        log("WARN", "设备预览通道已断开 " + session->host + ":" + std::to_string(PortMap::preview));
+    }
 }
 
 void DesktopController::handle_line(const std::shared_ptr<Session>& session, const std::string& line) {
@@ -626,6 +862,13 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
         const json::Value payload = root.contains("payload") ? root.at("payload") : json::Value(nullptr);
 
         if (kind == "reply") {
+            if (action == "camera.capabilities.report") {
+                registry_.apply_capabilities(device_id, payload);
+                registry_.mark_seen(device_id, timestamp, action);
+                log("INFO", device_id + " 相机能力已更新");
+                return;
+            }
+
             const std::string correlation_id = object.contains("correlationId") && object.at("correlationId").is_string()
                 ? object.at("correlationId").as_string()
                 : "";
@@ -677,7 +920,7 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
             }
 
             registry_.mark_seen(device_id, timestamp, action.empty() ? "reply" : action);
-            log(status == "accepted" ? "INFO" : "WARN", (device_id.empty() ? session->host : device_id) + " reply " + action + " " + status + (message.empty() ? "" : (" · " + message)));
+            log(status == "accepted" ? "INFO" : "WARN", (device_id.empty() ? session->host : device_id) + " 回执 " + action + " " + status + (message.empty() ? "" : (" · " + message)));
             return;
         }
 
@@ -689,19 +932,19 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
                 }
             }
             registry_.apply_hello(session->host, session->port, device_id, name, timestamp, payload);
-            log("INFO", device_id + " hello from " + session->host);
+            log("INFO", device_id + " 已上线，来源 " + session->host);
             return;
         }
 
         if (action == "device.status.push") {
             registry_.apply_status(device_id, timestamp, payload, action);
-            log("INFO", device_id + " status updated");
+            log("INFO", device_id + " 状态已更新");
             return;
         }
 
         if (action == "camera.capabilities.report") {
             registry_.apply_capabilities(device_id, payload);
-            log("INFO", device_id + " capabilities updated");
+            log("INFO", device_id + " 相机能力已更新");
             return;
         }
 
@@ -711,7 +954,7 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
             if (const auto* detections_value = payload.find("detections"); detections_value != nullptr && detections_value->is_array()) {
                 detections = static_cast<int>(detections_value->as_array().size());
             }
-            log("INFO", device_id + " inference result push detections=" + std::to_string(detections));
+            log("INFO", device_id + " 推理结果已更新，目标数=" + std::to_string(detections));
             return;
         }
 
@@ -726,7 +969,7 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
                     payload.contains("frameIndex") ? payload.at("frameIndex").as_int() : 0
                 );
             }
-            log("INFO", device_id + " preview frame updated");
+            log("INFO", device_id + " 预览帧已更新");
             return;
         }
 
@@ -737,9 +980,52 @@ void DesktopController::handle_line(const std::shared_ptr<Session>& session, con
         }
 
         registry_.mark_seen(device_id, timestamp, action.empty() ? "message" : action);
-        log("INFO", (device_id.empty() ? session->host : device_id) + " -> " + (action.empty() ? "message" : action));
+        log("INFO", (device_id.empty() ? session->host : device_id) + " -> " + (action.empty() ? "消息" : action));
     } catch (const std::exception& error) {
-        log("ERROR", "failed to parse device message: " + std::string(error.what()));
+        log("ERROR", "设备消息解析失败: " + std::string(error.what()));
+    }
+}
+
+void DesktopController::handle_preview_line(const std::shared_ptr<Session>& session, const std::string& line) {
+    try {
+        const auto root = json::parse(line);
+        const auto& object = root.as_object();
+
+        const auto timestamp = object.contains("timestamp") ? object.at("timestamp").as_string() : DesktopController::timestamp_now();
+        const std::string action = object.contains("action") ? object.at("action").as_string() : "";
+        std::string device_id = session->device_id;
+
+        if (const auto source = root.find("source"); source != nullptr && source->is_object()) {
+            if (const auto source_device = source->find("deviceId"); source_device != nullptr && source_device->is_string()) {
+                device_id = source_device->as_string();
+            }
+        }
+
+        if (!device_id.empty()) {
+            session->device_id = device_id;
+            std::scoped_lock lock(sessions_mutex_);
+            sessions_by_device_id_[device_id] = session;
+        }
+
+        if (action != "preview.frame.push") {
+            return;
+        }
+
+        const json::Value payload = root.contains("payload") ? root.at("payload") : json::Value(nullptr);
+        if (!payload.is_object()) {
+            return;
+        }
+
+        registry_.apply_preview(
+            device_id,
+            timestamp,
+            payload.contains("jpegBase64") ? payload.at("jpegBase64").as_string() : "",
+            payload.contains("imageWidth") ? payload.at("imageWidth").as_int() : 0,
+            payload.contains("imageHeight") ? payload.at("imageHeight").as_int() : 0,
+            payload.contains("frameIndex") ? payload.at("frameIndex").as_int() : 0
+        );
+    } catch (const std::exception& error) {
+        log("ERROR", "预览消息解析失败: " + std::string(error.what()));
     }
 }
 
@@ -750,7 +1036,7 @@ void DesktopController::handle_media_message(const std::string& action, const js
     }
 
     const std::string transfer_id = transfer_id_value->as_string();
-    const std::filesystem::path runtime_root = std::filesystem::current_path() / "vino_Desktop_runtime" / "media" / device_id;
+    const std::filesystem::path runtime_root = media_root_for_device(device_id);
     std::filesystem::create_directories(runtime_root);
 
     if (action == "media.push.begin") {
@@ -762,7 +1048,7 @@ void DesktopController::handle_media_message(const std::string& action, const js
 
         std::scoped_lock lock(files_mutex_);
         file_assemblies_[transfer_id] = std::move(assembly);
-        log("INFO", "receiving media " + assembly.path.string());
+        log("INFO", "开始接收媒体文件 " + assembly.path.string());
         return;
     }
 
@@ -791,7 +1077,7 @@ void DesktopController::handle_media_message(const std::string& action, const js
         }
         iterator->second.stream.flush();
         iterator->second.stream.close();
-        log("INFO", "saved media " + iterator->second.path.string());
+        log("INFO", "媒体文件已保存 " + iterator->second.path.string());
         registry_.apply_media(device_id, timestamp, iterator->second.path.string(), iterator->second.category);
         file_assemblies_.erase(iterator);
     }
@@ -831,6 +1117,9 @@ bool DesktopController::send_envelope(const std::shared_ptr<Session>& session, c
     const auto payload = envelope.stringify() + "\n";
 
     std::scoped_lock lock(session->write_mutex);
+    if (!session->running || session->socket == invalid_socket_handle) {
+        return false;
+    }
     const bool sent = socket_send_all(session->socket, payload);
     if (sent && out_message_id != nullptr) {
         *out_message_id = message_id;

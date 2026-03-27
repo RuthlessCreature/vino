@@ -30,6 +30,8 @@
 	<string>vino needs camera access for live preview, capture, recording, and on-device inference.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>vino uses the local network to communicate with the desktop control station and publish device state.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>vino needs access to save captured photos and videos into the device photo library.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

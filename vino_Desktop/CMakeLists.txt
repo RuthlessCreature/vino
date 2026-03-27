@@ -13,6 +13,7 @@ find_package(Threads REQUIRED)
 add_library(vino_desktop_core
     src/core/Blueprint.cpp
     src/core/DeviceRegistry.cpp
+    src/core/RuntimePaths.cpp
     src/network/BatchGateway.cpp
     src/network/Controller.cpp
     src/network/PostGateway.cpp
@@ -46,8 +47,25 @@ if(APPLE)
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 
-    add_executable(vino_desktop_app
+    set(APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/Resources/vino_Desktop.icns")
+
+    add_executable(vino_desktop_app MACOSX_BUNDLE
         src/ui/MacApp.mm
+        ${APP_ICON}
+    )
+
+    set_target_properties(vino_desktop_app PROPERTIES
+        OUTPUT_NAME "vino_Desktop"
+        MACOSX_BUNDLE_BUNDLE_NAME "vino Desktop"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "cc.vino.desktop"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_ICON_FILE "vino_Desktop.icns"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Resources/Info.plist.in"
+    )
+
+    set_source_files_properties(${APP_ICON} PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources"
     )
 
     target_include_directories(vino_desktop_app

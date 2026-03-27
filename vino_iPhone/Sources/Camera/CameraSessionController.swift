@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+import Photos
 import UIKit
 import ImageIO
 
@@ -302,7 +303,7 @@ public final class CameraSessionController: ObservableObject {
                 case .success(let output):
                     let (fileURL, photoData) = output
                     self?.lastCapturedFileURL = fileURL
-                    appState.lastStatusMessage = "照片已保存 · \(fileURL.lastPathComponent)"
+                    self?.saveMediaToPhotoLibrary(url: fileURL, kind: .photo, appState: appState)
                     self?.onPhotoDataCaptured?(photoData)
                     self?.onMediaCaptured?(fileURL, "photo")
                 case .failure:
@@ -340,7 +341,7 @@ public final class CameraSessionController: ObservableObject {
                 switch result {
                 case .success(let fileURL):
                     self?.lastCapturedFileURL = fileURL
-                    appState.lastStatusMessage = "视频已保存 · \(fileURL.lastPathComponent)"
+                    self?.saveMediaToPhotoLibrary(url: fileURL, kind: .video, appState: appState)
                     self?.onMediaCaptured?(fileURL, "video")
                 case .failure:
                     appState.lastStatusMessage = "录像失败"
@@ -413,6 +414,79 @@ public final class CameraSessionController: ObservableObject {
         let collapsed = raw.replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
         let trimmed = collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
         return trimmed.isEmpty ? "context" : trimmed
+    }
+
+    private func saveMediaToPhotoLibrary(url: URL, kind: SavedMediaKind, appState: VinoAppState) {
+        let commitSave: () -> Void = {
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetCreationRequest.forAsset()
+                let options = PHAssetResourceCreationOptions()
+                options.shouldMoveFile = false
+                request.addResource(with: kind.resourceType, fileURL: url, options: options)
+            }) { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        switch kind {
+                        case .photo:
+                            appState.lastStatusMessage = "照片已保存到图库 · \(url.lastPathComponent)"
+                        case .video:
+                            appState.lastStatusMessage = "视频已保存到图库 · \(url.lastPathComponent)"
+                        }
+                    } else {
+                        switch kind {
+                        case .photo:
+                            appState.lastStatusMessage = "照片已保存到应用目录，但写入图库失败"
+                        case .video:
+                            appState.lastStatusMessage = "视频已保存到应用目录，但写入图库失败"
+                        }
+                    }
+                }
+            }
+        }
+
+        let authorization = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        switch authorization {
+        case .authorized, .limited:
+            commitSave()
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                if status == .authorized || status == .limited {
+                    commitSave()
+                } else {
+                    DispatchQueue.main.async {
+                        switch kind {
+                        case .photo:
+                            appState.lastStatusMessage = "照片已保存到应用目录，图库权限未开启"
+                        case .video:
+                            appState.lastStatusMessage = "视频已保存到应用目录，图库权限未开启"
+                        }
+                    }
+                }
+            }
+        default:
+            DispatchQueue.main.async {
+                switch kind {
+                case .photo:
+                    appState.lastStatusMessage = "照片已保存到应用目录，图库权限未开启"
+                case .video:
+                    appState.lastStatusMessage = "视频已保存到应用目录，图库权限未开启"
+                }
+            }
+        }
+    }
+}
+
+private enum SavedMediaKind {
+    case photo
+    case video
+
+    var resourceType: PHAssetResourceType {
+        switch self {
+        case .photo:
+            return .photo
+        case .video:
+            return .video
+        }
     }
 }
 

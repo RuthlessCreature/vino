@@ -1,4 +1,5 @@
 #include "vino_desktop/DesktopRuntime.hpp"
+#include "vino_desktop/RuntimePaths.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -22,7 +23,7 @@ DesktopRuntime::~DesktopRuntime() {
 bool DesktopRuntime::start() {
     load_aliases_from_disk();
     const bool started = batch_gateway_.start();
-    append_log(started ? "INFO" : "ERROR", started ? "batch gateway ready on :49020" : "failed to start batch gateway on :49020");
+    append_log(started ? "INFO" : "ERROR", started ? "批处理网关已就绪，监听 :49020" : "批处理网关启动失败，端口 :49020");
     return started;
 }
 
@@ -33,16 +34,20 @@ void DesktopRuntime::stop() {
 
 bool DesktopRuntime::connect_host(const std::string& host, int port) {
     const bool connected = controller_.connect_to_device(host, port);
-    append_log(connected ? "INFO" : "WARN", connected ? ("manual connect " + host + ":" + std::to_string(port)) : ("failed connect " + host + ":" + std::to_string(port)));
+    append_log(connected ? "INFO" : "WARN", connected ? ("手动连接成功 " + host + ":" + std::to_string(port)) : ("手动连接失败 " + host + ":" + std::to_string(port)));
     return connected;
 }
 
-void DesktopRuntime::scan_prefix_async(const std::string& prefix, int start, int end, int port) {
-    append_log("INFO", "scan requested " + prefix + "." + std::to_string(start) + "-" + std::to_string(end));
+int DesktopRuntime::scan_prefix(const std::string& prefix, int start, int end, int port) {
+    append_log("INFO", "开始扫描网段 " + prefix + "." + std::to_string(start) + "-" + std::to_string(end));
+    const int found = controller_.scan_prefix(prefix, start, end, port);
+    append_log("INFO", "扫描完成，发现 " + std::to_string(found) + " 台可连接设备");
+    return found;
+}
 
+void DesktopRuntime::scan_prefix_async(const std::string& prefix, int start, int end, int port) {
     std::thread([this, prefix, start, end, port] {
-        const int found = controller_.scan_prefix(prefix, start, end, port);
-        append_log("INFO", "scan finished found=" + std::to_string(found));
+        (void)scan_prefix(prefix, start, end, port);
     }).detach();
 }
 
@@ -80,7 +85,7 @@ json::Value DesktopRuntime::dispatch_to_devices(
     operation.context = context;
     operation.payload = payload;
 
-    append_log("INFO", "dispatch " + action + " -> " + std::to_string(device_ids.size()) + " device(s)");
+    append_log("INFO", "下发动作 " + action + "，目标设备 " + std::to_string(device_ids.size()) + " 台");
     return controller_.dispatch(operation);
 }
 
@@ -103,14 +108,14 @@ json::Value DesktopRuntime::install_model_to_devices(
     const std::string& version,
     bool activate_after_install
 ) {
-    append_log("INFO", "install model " + model_id + " -> " + std::to_string(device_ids.size()) + " device(s)");
+    append_log("INFO", "开始分发模型 " + model_id + "，目标设备 " + std::to_string(device_ids.size()) + " 台");
     return controller_.install_model(device_ids, file_path, model_id, model_name, version, activate_after_install);
 }
 
 bool DesktopRuntime::set_alias(const std::string& device_id, const std::string& alias) {
     const bool updated = controller_.set_alias(device_id, alias);
     save_aliases_to_disk();
-    append_log(updated ? "INFO" : "WARN", updated ? ("alias set " + device_id + " -> " + alias) : ("failed alias set " + device_id));
+    append_log(updated ? "INFO" : "WARN", updated ? ("设备命名已更新 " + device_id + " -> " + alias) : ("设备命名更新失败 " + device_id));
     return updated;
 }
 
@@ -136,7 +141,7 @@ void DesktopRuntime::load_aliases_from_disk() {
 
     std::ifstream stream(path);
     if (!stream) {
-        append_log("WARN", "failed to open alias file " + path.string());
+        append_log("WARN", "无法打开别名配置文件 " + path.string());
         return;
     }
 
@@ -156,9 +161,9 @@ void DesktopRuntime::load_aliases_from_disk() {
             }
         }
         controller_.load_aliases(aliases);
-        append_log("INFO", "loaded aliases count=" + std::to_string(aliases.size()));
+        append_log("INFO", "已加载别名配置，共 " + std::to_string(aliases.size()) + " 条");
     } catch (const std::exception& error) {
-        append_log("WARN", "failed to parse alias file: " + std::string(error.what()));
+        append_log("WARN", "别名配置解析失败: " + std::string(error.what()));
     }
 }
 
@@ -180,7 +185,7 @@ void DesktopRuntime::save_aliases_to_disk() const {
 }
 
 std::filesystem::path DesktopRuntime::runtime_root() {
-    return std::filesystem::current_path() / "vino_Desktop_runtime";
+    return desktop_runtime_root();
 }
 
 std::filesystem::path DesktopRuntime::alias_file_path() {

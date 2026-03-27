@@ -94,7 +94,7 @@ bool BatchGatewayServer::start(int port) {
         accept_loop();
     });
 
-    log("INFO", "batch gateway listening on 0.0.0.0:" + std::to_string(port));
+    log("INFO", "批处理网关监听 0.0.0.0:" + std::to_string(port));
     return true;
 }
 
@@ -280,4 +280,3 @@ void BatchGatewayServer::log(const std::string& level, const std::string& messag
 }
 
 } // namespace vino::desktop
-

@@ -1,8 +1,9 @@
 file(REMOVE_RECURSE
   "CMakeFiles/vino_desktop_app.dir/src/ui/MacApp.mm.o"
   "CMakeFiles/vino_desktop_app.dir/src/ui/MacApp.mm.o.d"
-  "vino_desktop_app"
-  "vino_desktop_app.pdb"
+  "vino_Desktop.app/Contents/MacOS/vino_Desktop"
+  "vino_Desktop.app/Contents/Resources/vino_Desktop.icns"
+  "vino_Desktop.pdb"
 )
 
 # Per-language clean rules from dependency scanning.

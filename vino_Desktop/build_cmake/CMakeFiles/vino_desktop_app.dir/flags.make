@@ -6,7 +6,7 @@ OBJCXX_DEFINES =
 
 OBJCXX_INCLUDES = -I/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/include -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks
 
-OBJCXX_FLAGSarm64 = -g -std=c++2a -arch arm64 -fobjc-arc
+OBJCXX_FLAGSarm64 = -O3 -DNDEBUG -std=c++2a -arch arm64 -fobjc-arc
 
-OBJCXX_FLAGS = -g -std=c++2a -arch arm64 -fobjc-arc
+OBJCXX_FLAGS = -O3 -DNDEBUG -std=c++2a -arch arm64 -fobjc-arc
 
