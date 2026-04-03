@@ -167,7 +167,11 @@
 
 - iPhone 侧当前支持多模型并行 Vision/CoreML 推理，每个激活模型独占一个工作队列。
 - 视频流模式下实时推理并渲染框；拍照时如果推理开启，也会对静态照片做一次推理。
-- 远端模型安装当前优先支持单文件 `mlmodel` 上传，提交后在手机端编译成 `mlmodelc` 运行时目录。
+- 远端模型安装支持：
+  - 单文件 `mlmodel` 直接分块上传，手机端编译成 `mlmodelc`
+  - 目录型 `mlpackage` / `mlmodelc` 由 Desktop 自动打包为 bundle archive 后上传
+  - 手机端收到 `mlpackage` 后解包并编译成 `mlmodelc`
+  - 手机端收到 `mlmodelc` 后解包并直接作为运行时目录使用
 - iPhone 侧当前在 `stream` 模式下会自动推送低频 JPEG 预览帧，Desktop 可直接显示实时镜像。
 - Desktop 侧当前会跟踪模型上传的本地分块进度，以及设备端对 `begin / chunk / commit` 的回执结果。
 

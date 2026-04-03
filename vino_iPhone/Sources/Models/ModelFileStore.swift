@@ -2,6 +2,8 @@ import CoreML
 import Foundation
 
 public actor ModelFileStore {
+    private static let bundleArchiveMagic = Data("VINOAR01".utf8)
+
     public struct Metadata: Codable {
         public var id: String
         public var name: String
@@ -18,6 +20,8 @@ public actor ModelFileStore {
         public var modelName: String
         public var version: String
         public var fileName: String
+        public var sourceFormat: String
+        public var transportFormat: String
         public var data: Data
     }
 
@@ -30,7 +34,9 @@ public actor ModelFileStore {
         modelID: String,
         modelName: String,
         version: String,
-        fileName: String
+        fileName: String,
+        sourceFormat: String,
+        transportFormat: String
     ) {
         pendingTransfers[transferID] = PendingTransfer(
             transferID: transferID,
@@ -38,6 +44,8 @@ public actor ModelFileStore {
             modelName: modelName,
             version: version,
             fileName: fileName,
+            sourceFormat: sourceFormat,
+            transportFormat: transportFormat,
             data: Data()
         )
     }
@@ -67,10 +75,25 @@ public actor ModelFileStore {
         }
         try FileManager.default.createDirectory(at: modelFolder, withIntermediateDirectories: true)
 
-        let originalURL = modelFolder.appendingPathComponent(transfer.fileName)
-        try transfer.data.write(to: originalURL, options: .atomic)
+        let originalURL: URL
+        switch transfer.transportFormat {
+        case "bundle-archive":
+            originalURL = modelFolder.appendingPathComponent(transfer.fileName, isDirectory: true)
+            try unpackBundleArchive(transfer.data, to: originalURL)
 
-        let runtimeURL = try materializeRuntimeModel(at: originalURL, modelFolder: modelFolder)
+        case "raw-file":
+            originalURL = modelFolder.appendingPathComponent(transfer.fileName)
+            try transfer.data.write(to: originalURL, options: .atomic)
+
+        default:
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        let runtimeURL = try materializeRuntimeModel(
+            at: originalURL,
+            sourceFormat: transfer.sourceFormat,
+            modelFolder: modelFolder
+        )
         let metadata = Metadata(
             id: transfer.modelID,
             name: transfer.modelName,
@@ -171,19 +194,115 @@ public actor ModelFileStore {
         return try JSONDecoder().decode(Metadata.self, from: data)
     }
 
-    private func materializeRuntimeModel(at originalURL: URL, modelFolder: URL) throws -> URL {
-        switch originalURL.pathExtension.lowercased() {
+    private func materializeRuntimeModel(at originalURL: URL, sourceFormat: String, modelFolder: URL) throws -> URL {
+        switch sourceFormat.lowercased() {
         case "mlmodel":
-            let compiledURL = try MLModel.compileModel(at: originalURL)
-            let destinationURL = modelFolder.appendingPathComponent("\(originalURL.deletingPathExtension().lastPathComponent).mlmodelc", isDirectory: true)
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
+            return try compileModelToRuntime(at: originalURL, modelFolder: modelFolder)
+
+        case "mlpackage":
+            do {
+                return try compileModelToRuntime(at: originalURL, modelFolder: modelFolder)
+            } catch {
+                let fallbackURL = originalURL
+                    .appendingPathComponent("Data", isDirectory: true)
+                    .appendingPathComponent("com.apple.CoreML", isDirectory: true)
+                    .appendingPathComponent("model.mlmodel")
+                if FileManager.default.fileExists(atPath: fallbackURL.path) {
+                    return try compileModelToRuntime(at: fallbackURL, modelFolder: modelFolder)
+                }
+                throw error
             }
-            try FileManager.default.copyItem(at: compiledURL, to: destinationURL)
-            return destinationURL
+
+        case "mlmodelc":
+            return originalURL
 
         default:
-            return originalURL
+            switch originalURL.pathExtension.lowercased() {
+            case "mlmodel":
+                return try compileModelToRuntime(at: originalURL, modelFolder: modelFolder)
+            case "mlmodelc":
+                return originalURL
+            default:
+                return originalURL
+            }
+        }
+    }
+
+    private func compileModelToRuntime(at originalURL: URL, modelFolder: URL) throws -> URL {
+        let compiledURL = try MLModel.compileModel(at: originalURL)
+        let destinationURL = modelFolder.appendingPathComponent("\(originalURL.deletingPathExtension().lastPathComponent).mlmodelc", isDirectory: true)
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.copyItem(at: compiledURL, to: destinationURL)
+        return destinationURL
+    }
+
+    private func unpackBundleArchive(_ archiveData: Data, to destinationURL: URL) throws {
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+
+        var cursor = 0
+
+        func readData(count: Int) throws -> Data {
+            guard count >= 0, archiveData.count - cursor >= count else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            let range = cursor..<(cursor + count)
+            cursor += count
+            return archiveData.subdata(in: range)
+        }
+
+        func readUInt32() throws -> UInt32 {
+            let data = try readData(count: 4)
+            return data.enumerated().reduce(0) { partial, entry in
+                partial | (UInt32(entry.element) << (UInt32(entry.offset) * 8))
+            }
+        }
+
+        func readUInt64() throws -> UInt64 {
+            let data = try readData(count: 8)
+            return data.enumerated().reduce(0) { partial, entry in
+                partial | (UInt64(entry.element) << (UInt64(entry.offset) * 8))
+            }
+        }
+
+        let magic = try readData(count: Self.bundleArchiveMagic.count)
+        guard magic == Self.bundleArchiveMagic else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        let version = try readUInt32()
+        guard version == 1 else {
+            throw CocoaError(.fileReadUnknown)
+        }
+
+        let fileCount = Int(try readUInt32())
+        for _ in 0..<fileCount {
+            let pathLength = Int(try readUInt32())
+            let byteCount = try readUInt64()
+            guard byteCount <= UInt64(Int.max) else {
+                throw CocoaError(.fileReadTooLarge)
+            }
+
+            let pathData = try readData(count: pathLength)
+            guard let relativePath = String(data: pathData, encoding: .utf8),
+                  !relativePath.isEmpty,
+                  !relativePath.contains(".."),
+                  !relativePath.hasPrefix("/") else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+
+            let fileData = try readData(count: Int(byteCount))
+            let fileURL = destinationURL.appendingPathComponent(relativePath, isDirectory: false)
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fileData.write(to: fileURL, options: .atomic)
+        }
+
+        guard cursor == archiveData.count else {
+            throw CocoaError(.fileReadCorruptFile)
         }
     }
 

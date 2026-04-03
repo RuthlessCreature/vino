@@ -469,8 +469,21 @@ public final class ControlPlaneCoordinator: ObservableObject {
             sendReply(to: peerID, correlationID: correlationID, action: action, status: "unsupported", message: "action not supported")
         }
 
-        if let appState, let cameraController {
+        if shouldPublishStatusAfterHandlingAction(action),
+           let appState,
+           let cameraController {
             publishStatus(appState: appState, settings: cameraController.settings, ipAddresses: latestIPAddresses)
+        }
+    }
+
+    private func shouldPublishStatusAfterHandlingAction(_ action: String) -> Bool {
+        switch action {
+        case "camera.capabilities.get",
+             "inference.model.install.begin",
+             "inference.model.install.chunk":
+            return false
+        default:
+            return true
         }
     }
 
@@ -539,13 +552,18 @@ public final class ControlPlaneCoordinator: ObservableObject {
             return
         }
 
+        let sourceFormat = (payload?["sourceFormat"] as? String) ?? URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        let transportFormat = (payload?["transportFormat"] as? String) ?? "raw-file"
+
         Task {
             await modelStore.beginInstall(
                 transferID: transferID,
                 modelID: modelID,
                 modelName: modelName,
                 version: version,
-                fileName: fileName
+                fileName: fileName,
+                sourceFormat: sourceFormat,
+                transportFormat: transportFormat
             )
 
             await MainActor.run {

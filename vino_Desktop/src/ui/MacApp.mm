@@ -408,6 +408,8 @@ NSTextField* make_label(NSString* text, CGFloat size = 12.0, NSFontWeight weight
     label.font = mono_font(size, weight);
     label.textColor = color == nil ? hex_color(0xF3F6F8) : color;
     label.translatesAutoresizingMaskIntoConstraints = NO;
+    [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [label setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     return label;
 }
 
@@ -492,6 +494,19 @@ void relax_vertical_layout(NSView* view) {
 
     for (NSView* child in view.subviews) {
         relax_vertical_layout(child);
+    }
+}
+
+void relax_horizontal_layout(NSView* view) {
+    if (view == nil) {
+        return;
+    }
+
+    [view setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [view setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+    for (NSView* child in view.subviews) {
+        relax_horizontal_layout(child);
     }
 }
 
@@ -1124,6 +1139,96 @@ std::string transfer_digest(const ModelTransferSnapshot& transfer) {
     return stream.str();
 }
 
+std::string upload_result_summary(const Value& result, std::size_t device_count) {
+    const auto* results_value = find_in_object(result, "results");
+    if (results_value == nullptr || !results_value->is_array()) {
+        return "模型上传任务已提交";
+    }
+
+    int queued = 0;
+    int busy = 0;
+    int failed = 0;
+    std::vector<std::string> details;
+
+    for (const auto& item : results_value->as_array()) {
+        if (!item.is_object()) {
+            continue;
+        }
+        const std::string status = string_or(item.find("status"));
+        const std::string device_id = string_or(item.find("deviceId"));
+        const std::string message = string_or(item.find("message"));
+
+        if (status == "queued") {
+            ++queued;
+        } else if (status == "busy") {
+            ++busy;
+        } else {
+            ++failed;
+        }
+
+        if (!message.empty()) {
+            details.push_back(device_id.empty() ? message : (device_id + " · " + message));
+        }
+    }
+
+    std::ostringstream stream;
+    stream << "模型上传：已提交 " << queued << " 台";
+    if (busy > 0) {
+        stream << "，忙碌 " << busy << " 台";
+    }
+    if (failed > 0) {
+        stream << "，失败 " << failed << " 台";
+    }
+    if (queued == 0 && busy == 0 && failed == 0) {
+        stream << "，目标 " << device_count << " 台";
+    }
+    if (!details.empty()) {
+        stream << " ｜ " << details.front();
+    }
+    return stream.str();
+}
+
+const ModelTransferSnapshot* latest_active_transfer_for_device(
+    const std::vector<ModelTransferSnapshot>& transfers,
+    const std::string& device_id
+) {
+    const ModelTransferSnapshot* match = nullptr;
+    for (const auto& transfer : transfers) {
+        if (transfer.finished || transfer.device_id != device_id) {
+            continue;
+        }
+        if (match == nullptr || transfer.updated_at > match->updated_at) {
+            match = &transfer;
+        }
+    }
+    return match;
+}
+
+bool has_active_transfer_for_any_device(
+    const std::vector<ModelTransferSnapshot>& transfers,
+    const std::vector<std::string>& device_ids
+) {
+    for (const auto& device_id : device_ids) {
+        if (latest_active_transfer_for_device(transfers, device_id) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string active_transfer_summary(const ModelTransferSnapshot& transfer) {
+    const double progress = transfer.byte_count == 0
+        ? (transfer.finished ? 100.0 : 0.0)
+        : (100.0 * static_cast<double>(transfer.bytes_sent) / static_cast<double>(transfer.byte_count));
+
+    std::ostringstream stream;
+    stream
+        << "传输中 " << format_number(progress, 1) << "%"
+        << " | 阶段=" << localized_transfer_stage(transfer.stage)
+        << " | 分块确认 " << transfer.chunks_acked << "/" << transfer.chunk_count;
+    return stream.str();
+}
+
 std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     std::ostringstream stream;
     stream
@@ -1157,6 +1262,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 @implementation VinoDesktopAppController {
     std::unique_ptr<DesktopRuntime> _runtime;
     std::vector<DeviceSnapshot> _devices;
+    std::vector<ModelTransferSnapshot> _modelTransfers;
     std::string _selectedDeviceId;
     std::string _lastControlSyncSignature;
     std::string _pendingControlDeviceId;
@@ -1229,6 +1335,9 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSButton* _persistToggle;
     NSButton* _smoothAFToggle;
     NSButton* _activateAfterInstallToggle;
+    NSButton* _browseModelButton;
+    NSButton* _uploadButton;
+    NSButton* _uploadAllButton;
 
     NSTimer* _refreshTimer;
     NSNetServiceBrowser* _serviceBrowser;
@@ -1275,11 +1384,11 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
 - (void)buildWindow {
     const CGFloat default_width = 1366.0;
-    const CGFloat default_height = 540.0;
+    const CGFloat default_height = 560.0;
     NSScreen* main_screen = NSScreen.mainScreen;
     NSRect visible_frame = main_screen != nil ? main_screen.visibleFrame : NSMakeRect(0.0, 0.0, default_width, default_height);
-    const CGFloat content_width = std::min(default_width, std::max<CGFloat>(1200.0, visible_frame.size.width - 18.0));
-    const CGFloat content_height = std::min(default_height, std::max<CGFloat>(520.0, visible_frame.size.height - 44.0));
+    const CGFloat content_width = std::min(default_width, std::max<CGFloat>(1080.0, visible_frame.size.width - 18.0));
+    const CGFloat content_height = std::min(default_height, std::max<CGFloat>(540.0, visible_frame.size.height - 44.0));
     const NSRect content_rect = NSMakeRect(
         std::round(NSMidX(visible_frame) - content_width * 0.5),
         std::round(NSMidY(visible_frame) - content_height * 0.5),
@@ -1293,7 +1402,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
                                                      NSWindowStyleMaskMiniaturizable)
                                             backing:NSBackingStoreBuffered
                                               defer:NO];
-    _window.title = @"vino 工业控制台 · 紧凑布局 B10";
+    _window.title = @"vino 工业控制台 · 紧凑布局 B12";
     _window.backgroundColor = hex_color(0x050608);
 
     NSView* content = _window.contentView;
@@ -1314,7 +1423,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
         [rootSplit.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-8.0]
     ]];
 
-    NSSplitView* topSplit = [[NSSplitView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1340.0, 448.0)];
+    NSSplitView* topSplit = [[NSSplitView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1090.0, 466.0)];
     topSplit.vertical = YES;
     topSplit.dividerStyle = NSSplitViewDividerStyleThin;
 
@@ -1322,6 +1431,10 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSView* centerPanel = [self buildWorkspacePanel];
     NSView* rightPanel = [self buildSidePanel];
     NSView* terminalPanel = [self buildTerminalPanel];
+
+    [leftPanel.widthAnchor constraintEqualToConstant:220.0].active = YES;
+    [centerPanel.widthAnchor constraintGreaterThanOrEqualToConstant:720.0].active = YES;
+    [rightPanel.widthAnchor constraintGreaterThanOrEqualToConstant:352.0].active = YES;
 
     [topSplit addSubview:leftPanel];
     [topSplit addSubview:centerPanel];
@@ -1331,11 +1444,12 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     for (NSView* view in @[leftPanel, centerPanel, rightPanel, terminalPanel, topSplit, rootSplit]) {
         relax_vertical_layout(view);
+        relax_horizontal_layout(view);
     }
 
-    [rootSplit setPosition:446.0 ofDividerAtIndex:0];
-    [topSplit setPosition:210.0 ofDividerAtIndex:0];
-    [topSplit setPosition:1082.0 ofDividerAtIndex:1];
+    [rootSplit setPosition:462.0 ofDividerAtIndex:0];
+    [topSplit setPosition:220.0 ofDividerAtIndex:0];
+    [topSplit setPosition:980.0 ofDividerAtIndex:1];
 
     const NSRect frame_rect = [_window frameRectForContentRect:content_rect];
     _window.minSize = frame_rect.size;
@@ -1659,7 +1773,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _capabilityLabel.maximumNumberOfLines = 1;
     _modelsLabel = make_label(@"模型：未选择设备", 11.0, NSFontWeightRegular, hex_color(0xA8B7C2));
     _modelsLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _modelsLabel.maximumNumberOfLines = 1;
+    _modelsLabel.maximumNumberOfLines = 2;
 
     _aliasField = make_input(@"设备名称");
     _modelField = make_input(@"模型 ID");
@@ -1671,9 +1785,9 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     NSButton* activateButton = make_button(@"启用", self, @selector(activateModelPressed:));
     NSButton* deactivateButton = make_button(@"停用", self, @selector(deactivateModelPressed:));
     NSButton* removeButton = make_button(@"删除", self, @selector(removeModelPressed:));
-    NSButton* browseButton = make_button(@"选择文件", self, @selector(openModelPressed:));
-    NSButton* uploadButton = make_button(@"上传本机", self, @selector(uploadModelPressed:));
-    NSButton* uploadAllButton = make_button(@"上传全机", self, @selector(uploadModelAllPressed:));
+    _browseModelButton = make_button(@"选择文件", self, @selector(openModelPressed:));
+    _uploadButton = make_button(@"上传本机", self, @selector(uploadModelPressed:));
+    _uploadAllButton = make_button(@"上传全机", self, @selector(uploadModelAllPressed:));
     NSButton* photoAllButton = make_button(@"全机拍照", self, @selector(photoAllPressed:));
     NSButton* aiOnButton = make_button(@"全机推理", self, @selector(aiOnAllPressed:));
     NSButton* aiOffButton = make_button(@"全机停推", self, @selector(aiOffAllPressed:));
@@ -1706,9 +1820,9 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     NSStackView* modelActionRowBottom = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     modelActionRowBottom.distribution = NSStackViewDistributionFillEqually;
-    [modelActionRowBottom addArrangedSubview:browseButton];
-    [modelActionRowBottom addArrangedSubview:uploadButton];
-    [modelActionRowBottom addArrangedSubview:uploadAllButton];
+    [modelActionRowBottom addArrangedSubview:_browseModelButton];
+    [modelActionRowBottom addArrangedSubview:_uploadButton];
+    [modelActionRowBottom addArrangedSubview:_uploadAllButton];
 
     NSStackView* batchRow = make_stack(NSUserInterfaceLayoutOrientationHorizontal, 8.0);
     batchRow.distribution = NSStackViewDistributionFillEqually;
@@ -1894,6 +2008,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _lastLogCount = logs.size();
 
     const std::vector<ModelTransferSnapshot> transfers = _runtime->model_transfers();
+    _modelTransfers = transfers;
     std::ostringstream transfer_stream;
     if (transfers.empty()) {
         transfer_stream << "暂无模型传输记录";
@@ -2034,6 +2149,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
         _rawView.string = @"";
         [self refreshArchivePresentation];
         [self refreshPreviewForSnapshot:nullptr];
+        [self refreshModelTransferPresentation];
         return;
     }
 
@@ -2078,6 +2194,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _rawView.string = to_ns_string(diagnostic_text);
     [self refreshArchivePresentation];
     [self refreshPreviewForSnapshot:snapshot];
+    [self refreshModelTransferPresentation];
 }
 
 - (void)refreshArchivePresentation {
@@ -2356,6 +2473,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     _inferenceToggle.enabled = isOnline;
     _persistToggle.enabled = isOnline;
     [self refreshControlStatusPresentation];
+    [self refreshModelTransferPresentation];
 }
 
 - (void)refreshControlStatusPresentation {
@@ -2385,6 +2503,39 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     _controlStatusLabel.stringValue = text;
     _controlStatusLabel.textColor = color;
+}
+
+- (void)refreshModelTransferPresentation {
+    const DeviceSnapshot* snapshot = [self currentSnapshot];
+    const std::vector<std::string> online_device_ids = [self onlineDeviceIds];
+    const ModelTransferSnapshot* selected_transfer = snapshot == nullptr
+        ? nullptr
+        : latest_active_transfer_for_device(_modelTransfers, snapshot->device_id);
+    const bool selected_upload_busy = snapshot != nullptr && selected_transfer != nullptr;
+    const bool any_upload_busy = has_active_transfer_for_any_device(_modelTransfers, online_device_ids);
+
+    if (_browseModelButton != nil) {
+        _browseModelButton.enabled = YES;
+    }
+    if (_uploadButton != nil) {
+        _uploadButton.enabled = snapshot != nullptr && snapshot->online && !selected_upload_busy;
+        _uploadButton.title = selected_upload_busy ? @"上传中" : @"上传本机";
+    }
+    if (_uploadAllButton != nil) {
+        _uploadAllButton.enabled = !online_device_ids.empty() && !any_upload_busy;
+        _uploadAllButton.title = any_upload_busy ? @"全机上传中" : @"上传全机";
+    }
+
+    if (_modelsLabel == nil || snapshot == nullptr) {
+        return;
+    }
+
+    std::string text = "模型：" + models_digest(*snapshot);
+    if (selected_transfer != nullptr) {
+        text += " | " + active_transfer_summary(*selected_transfer);
+    }
+    _modelsLabel.stringValue = to_ns_string(text);
+    _modelsLabel.textColor = selected_transfer != nullptr ? hex_color(0xFFC56B) : hex_color(0xA8B7C2);
 }
 
 - (TriggerContext)currentContext {
@@ -2806,6 +2957,7 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = YES;
     panel.allowsMultipleSelection = NO;
+    panel.allowedFileTypes = @[@"mlmodel", @"mlpackage", @"mlmodelc"];
 
     if ([panel runModal] == NSModalResponseOK) {
         NSURL* url = panel.URL;
@@ -2835,14 +2987,36 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     NSString* version_string = _modelVersionField.stringValue.length == 0 ? @"1.0.0" : _modelVersionField.stringValue;
     const std::string version = to_std_string(version_string);
-    _runtime->install_model_to_device(
-        snapshot->device_id,
-        path,
-        model_id,
-        model_id,
-        version,
-        _activateAfterInstallToggle.state == NSControlStateValueOn
-    );
+    const std::string device_id = snapshot->device_id;
+    const bool activate_after_install = _activateAfterInstallToggle.state == NSControlStateValueOn;
+    [self updateFleetStatusMessage:"正在后台上传模型 " + model_id + " 到 1 台设备…"];
+
+    __weak VinoDesktopAppController* weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        VinoDesktopAppController* strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->_runtime == nullptr) {
+            return;
+        }
+
+        const Value result = strongSelf->_runtime->install_model_to_device(
+            device_id,
+            path,
+            model_id,
+            model_id,
+            version,
+            activate_after_install
+        );
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            VinoDesktopAppController* uiSelf = weakSelf;
+            if (uiSelf == nil) {
+                return;
+            }
+
+            [uiSelf updateFleetStatusMessage:upload_result_summary(result, 1)];
+            [uiSelf refreshUI:nil];
+        });
+    });
 }
 
 - (void)uploadModelAllPressed:(id)sender {
@@ -2857,14 +3031,35 @@ std::string snapshot_dump(const DeviceSnapshot& snapshot) {
 
     NSString* version_string = _modelVersionField.stringValue.length == 0 ? @"1.0.0" : _modelVersionField.stringValue;
     const std::string version = to_std_string(version_string);
-    _runtime->install_model_to_devices(
-        device_ids,
-        path,
-        model_id,
-        model_id,
-        version,
-        _activateAfterInstallToggle.state == NSControlStateValueOn
-    );
+    const bool activate_after_install = _activateAfterInstallToggle.state == NSControlStateValueOn;
+    [self updateFleetStatusMessage:"正在后台上传模型 " + model_id + " 到 " + std::to_string(device_ids.size()) + " 台设备…"];
+
+    __weak VinoDesktopAppController* weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        VinoDesktopAppController* strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->_runtime == nullptr) {
+            return;
+        }
+
+        const Value result = strongSelf->_runtime->install_model_to_devices(
+            device_ids,
+            path,
+            model_id,
+            model_id,
+            version,
+            activate_after_install
+        );
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            VinoDesktopAppController* uiSelf = weakSelf;
+            if (uiSelf == nil) {
+                return;
+            }
+
+            [uiSelf updateFleetStatusMessage:upload_result_summary(result, device_ids.size())];
+            [uiSelf refreshUI:nil];
+        });
+    });
 }
 
 - (void)photoAllPressed:(id)sender {

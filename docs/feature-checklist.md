@@ -385,13 +385,15 @@
 
 ### 4.6.6 模型格式兼容性
 
-- 状态：`MVP`
-- 当前优先：
+- 状态：`已实现`
+- 当前支持：
   - 单文件 `.mlmodel`
-- 后续可扩展：
   - `.mlpackage`
   - 已编译目录 `.mlmodelc`
-  - 多文件资源模型
+- 实现方式：
+  - `.mlmodel` 直接上传，手机端编译为 `.mlmodelc`
+  - Desktop 选择 `.mlpackage` / `.mlmodelc` 时自动打包为 bundle archive
+  - 手机端解包后分别执行编译或直接落为运行时目录
 
 ---
 

@@ -1,8 +1,12 @@
 #include "vino_desktop/Controller.hpp"
 #include "vino_desktop/RuntimePaths.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
+#include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -29,6 +33,130 @@ constexpr socket_handle invalid_socket_handle = -1;
 namespace vino::desktop {
 
 namespace {
+
+struct PreparedModelPayload {
+    std::string file_name {};
+    std::string source_format {};
+    std::string transport_format {};
+    std::vector<char> bytes {};
+};
+
+std::string lowercase_copy(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
+std::vector<char> read_binary_file(const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        return {};
+    }
+
+    stream.seekg(0, std::ios::end);
+    const auto byte_count = static_cast<std::size_t>(stream.tellg());
+    stream.seekg(0, std::ios::beg);
+
+    std::vector<char> data(byte_count);
+    if (byte_count > 0) {
+        stream.read(data.data(), static_cast<std::streamsize>(byte_count));
+    }
+    return data;
+}
+
+void append_u32_le(std::vector<char>& output, std::uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8) {
+        output.push_back(static_cast<char>((value >> shift) & 0xFFu));
+    }
+}
+
+void append_u64_le(std::vector<char>& output, std::uint64_t value) {
+    for (int shift = 0; shift < 64; shift += 8) {
+        output.push_back(static_cast<char>((value >> shift) & 0xFFu));
+    }
+}
+
+std::string source_format_for_path(const std::filesystem::path& path) {
+    const std::string extension = lowercase_copy(path.extension().string());
+    if (std::filesystem::is_regular_file(path) && extension == ".mlmodel") {
+        return "mlmodel";
+    }
+    if (std::filesystem::is_directory(path) && extension == ".mlpackage") {
+        return "mlpackage";
+    }
+    if (std::filesystem::is_directory(path) && extension == ".mlmodelc") {
+        return "mlmodelc";
+    }
+    return {};
+}
+
+std::vector<char> pack_bundle_directory(const std::filesystem::path& root_path) {
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root_path)) {
+        if (entry.is_regular_file()) {
+            files.push_back(entry.path());
+        }
+    }
+
+    std::sort(files.begin(), files.end());
+
+    std::vector<char> archive;
+    static constexpr std::string_view magic = "VINOAR01";
+    archive.insert(archive.end(), magic.begin(), magic.end());
+    append_u32_le(archive, 1);
+    append_u32_le(archive, static_cast<std::uint32_t>(files.size()));
+
+    for (const auto& file_path : files) {
+        std::error_code relative_error;
+        const auto relative_path = std::filesystem::relative(file_path, root_path, relative_error);
+        if (relative_error) {
+            throw std::runtime_error("failed to compute relative model path");
+        }
+
+        const std::string relative_string = relative_path.generic_string();
+        const std::vector<char> file_data = read_binary_file(file_path);
+        if (file_data.empty() && std::filesystem::file_size(file_path) > 0) {
+            throw std::runtime_error("failed to read bundled model file");
+        }
+
+        append_u32_le(archive, static_cast<std::uint32_t>(relative_string.size()));
+        append_u64_le(archive, static_cast<std::uint64_t>(file_data.size()));
+        archive.insert(archive.end(), relative_string.begin(), relative_string.end());
+        archive.insert(archive.end(), file_data.begin(), file_data.end());
+    }
+
+    return archive;
+}
+
+PreparedModelPayload prepare_model_payload(const std::string& file_path) {
+    const std::filesystem::path path(file_path);
+    if (!std::filesystem::exists(path)) {
+        throw std::runtime_error("model path does not exist");
+    }
+
+    const std::string source_format = source_format_for_path(path);
+    if (source_format.empty()) {
+        throw std::runtime_error("unsupported model format");
+    }
+
+    PreparedModelPayload payload;
+    payload.file_name = path.filename().string();
+    payload.source_format = source_format;
+
+    if (std::filesystem::is_regular_file(path)) {
+        payload.transport_format = "raw-file";
+        payload.bytes = read_binary_file(path);
+        if (payload.bytes.empty() && std::filesystem::file_size(path) > 0) {
+            throw std::runtime_error("failed to read model file");
+        }
+        return payload;
+    }
+
+    payload.transport_format = "bundle-archive";
+    payload.bytes = pack_bundle_directory(path);
+    return payload;
+}
 
 std::string iso_timestamp_now() {
     const auto now = std::chrono::system_clock::now();
@@ -84,6 +212,16 @@ void configure_connected_socket(socket_handle handle) {
 #if defined(SO_NOSIGPIPE)
     const int value = 1;
     setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &value, static_cast<socklen_t>(sizeof(value)));
+#endif
+
+#if defined(_WIN32)
+    const DWORD timeout_ms = 5000;
+    setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+#else
+    timeval timeout {};
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, &timeout, static_cast<socklen_t>(sizeof(timeout)));
 #endif
 }
 
@@ -487,25 +625,20 @@ json::Value DesktopController::install_model(
     const std::string& version,
     bool activate_after_install
 ) {
-    std::ifstream stream(file_path, std::ios::binary);
-    if (!stream) {
+    PreparedModelPayload payload;
+    try {
+        payload = prepare_model_payload(file_path);
+    } catch (const std::exception& error) {
         return make_object({
-            {"status", "file_open_failed"},
-            {"filePath", file_path}
+            {"status", std::string(error.what()) == "unsupported model format" ? "unsupported_format" : "file_open_failed"},
+            {"filePath", file_path},
+            {"message", error.what()}
         });
     }
 
-    stream.seekg(0, std::ios::end);
-    const auto byte_count = static_cast<std::size_t>(stream.tellg());
-    stream.seekg(0, std::ios::beg);
-
-    std::vector<char> file_data(byte_count);
-    if (byte_count > 0) {
-        stream.read(file_data.data(), static_cast<std::streamsize>(byte_count));
-    }
-
+    const std::size_t byte_count = payload.bytes.size();
     json::Value::Array results;
-    constexpr std::size_t chunk_size = 256 * 1024;
+    constexpr std::size_t chunk_size = 64 * 1024;
     const int total_chunks = static_cast<int>((byte_count + chunk_size - 1) / chunk_size);
 
     for (const auto& device_id : target_device_ids) {
@@ -517,6 +650,23 @@ json::Value DesktopController::install_model(
                 {"action", "inference.model.install"}
             }));
             continue;
+        }
+
+        {
+            std::scoped_lock lock(transfers_mutex_);
+            const auto existing = std::find_if(model_transfers_.begin(), model_transfers_.end(), [&device_id](const auto& entry) {
+                return entry.second.device_id == device_id && !entry.second.finished;
+            });
+            if (existing != model_transfers_.end()) {
+                results.push_back(make_object({
+                    {"deviceId", device_id},
+                    {"status", "busy"},
+                    {"action", "inference.model.install"},
+                    {"transferId", existing->second.transfer_id},
+                    {"message", "device still processing previous model transfer"}
+                }));
+                continue;
+            }
         }
 
         const std::string transfer_id = "model-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -554,7 +704,9 @@ json::Value DesktopController::install_model(
             {"modelId", model_id},
             {"modelName", model_name},
             {"version", version},
-            {"fileName", std::filesystem::path(file_path).filename().string()}
+            {"fileName", payload.file_name},
+            {"sourceFormat", payload.source_format},
+            {"transportFormat", payload.transport_format}
         });
 
         update_transfer_local_progress(transfer_id, "begin", "sending", 0, 0);
@@ -572,9 +724,9 @@ json::Value DesktopController::install_model(
         if (success) {
             std::size_t offset = 0;
             int chunks_sent = 0;
-            while (offset < file_data.size() && success) {
-                const std::size_t chunk_end = std::min(offset + chunk_size, file_data.size());
-                const std::string_view chunk(file_data.data() + offset, chunk_end - offset);
+            while (offset < payload.bytes.size() && success) {
+                const std::size_t chunk_end = std::min(offset + chunk_size, payload.bytes.size());
+                const std::string_view chunk(payload.bytes.data() + offset, chunk_end - offset);
 
                 OutboundOperation chunk_operation;
                 chunk_operation.target_device_ids = {device_id};
