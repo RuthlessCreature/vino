@@ -1,0 +1,107 @@
+version: 1
+name: vino
+summary: >
+  `vino` 正从 iPhone + Desktop 双端工业视觉系统，收敛为以 iPhone 边缘采集/推理终端为核心、
+  以“本地 Web 接收节点 + 云端 Web 业务后台”的双层 Web 架构为主的产品形态；当前已补充模型售卖、
+  账号授权、离线租约与混合接收/云端业务分层方案。
+status: active
+phase: building
+tags:
+  - industrial-vision
+  - iphone
+  - desktop
+  - model-distribution
+  - licensing
+features:
+  - id: FEAT-IPHONE-CAPTURE
+    title: iPhone 采集与本地推理
+    status: done
+  - id: FEAT-DESKTOP-CONSOLE
+    title: Desktop 控制台与批量控制
+    status: optional
+  - id: FEAT-PROTOCOL-V1
+    title: Bonjour + TCP JSONL 控制协议与文件分块传输
+    status: done
+  - id: FEAT-MODEL-BUNDLE
+    title: `.mlmodel` / `.mlpackage` / `.mlmodelc` 模型分发链路
+    status: done
+  - id: FEAT-MODEL-COMMERCE
+    title: Web 模型售卖与 iPhone 账号授权方案
+    status: in_progress
+  - id: FEAT-CLOUD-INGEST
+    title: 服务端媒体与结果接收链路
+    status: in_progress
+  - id: FEAT-LOCAL-INGEST
+    title: 本地 Web 媒体接收与缓存节点
+    status: in_progress
+requirements:
+  - id: REQ-CORE-1
+    title: 双端工业视觉主链路可用
+    status: done
+    priority: high
+    summary: >
+      iPhone 端需完成采集、预览、推理、模型安装；Desktop 端需完成发现、控制、模型分发、
+      实时预览镜像与批量网关。
+  - id: REQ-CORE-2
+    title: 模型文件兼容多种 CoreML 形态
+    status: done
+    priority: high
+    summary: >
+      系统需支持 `.mlmodel`、`.mlpackage`、`.mlmodelc` 三类模型形态，并具备分块安装与回执聚合能力。
+  - id: REQ-BIZ-1
+    title: 支持 Web 售卖模型并在 iPhone 端按账号下载使用
+    status: in_progress
+    priority: high
+    summary: >
+      需建立账号、组织、模型 Entitlement、设备激活、下载授权与离线租约机制，支持永久授权与限时授权。
+  - id: REQ-BIZ-2
+    title: 兼顾 App Store 合规与 B2B 商业化
+    status: in_progress
+    priority: high
+    summary: >
+      需优先采用 B2B/企业服务或付费 Web 工具伴随 App 的路线，降低 iPhone 端数字内容外部售卖的审核风险。
+  - id: REQ-ARCH-1
+    title: 弱化 Desktop，转向本地 Web 接收与云端 Web 业务分层
+    status: in_progress
+    priority: high
+    summary: >
+      核心产品形态应收敛为 iPhone 执行端 + 本地 Web 接收节点 + 云端 Web 业务后台；本地负责媒体接收与缓冲，
+      云端负责账号、授权、售卖、模型分发与业务管理，Desktop 更适合作为内部调试工具。
+progress:
+  summary: 5 done, 3 in progress, 0 blocked, 3 pending.
+  counts:
+    planned: 11
+    doing: 3
+    done: 5
+    blocked: 0
+blockers:
+  - iPhone 端“外部网站购买模型后在 App 内使用”的 App Store 审核边界仍需按 B2B/伴随工具路径严格设计。
+  - 离线授权可以显著提高盗版成本，但无法在越狱或被逆向环境下实现绝对 DRM。
+next_actions:
+  - 冻结账号体系、Entitlement、设备激活与离线租约的数据模型。
+  - 评估 `vino_iPhone` 的登录、模型商城同步与本地授权校验接入点。
+  - 定义本地 Web 接收节点：图片/视频/结果上传、局域网缓存、断网续传与云端转发。
+  - 设计云端 Web 后台：模型售卖、订单、授权分配、项目与设备管理。
+  - 定义云端服务：对象存储、元数据索引、查询、审计与报表。
+  - 基于老板版汇报材料补充价格、客户案例与阶段目标数据。
+  - 明确 Desktop 是否仅保留为内部调试/运维工具。
+links:
+  - label: repo
+    value: https://github.com/RuthlessCreature/vino.git
+  - label: readme
+    value: README.md
+  - label: feature-checklist
+    value: docs/feature-checklist.md
+  - label: protocol
+    value: docs/protocol.md
+  - label: model-commerce
+    value: docs/model-commerce-strategy.md
+  - label: boss-deck-md
+    value: docs/vino-老板汇报-商业逻辑.md
+  - label: boss-deck-md-ascii
+    value: docs/vino-boss-deck.md
+  - label: boss-deck-pptx
+    value: docs/vino-boss-deck.pptx
+meta:
+  source: codex-maintained
+  last_reviewed_at: '2026-04-06'
