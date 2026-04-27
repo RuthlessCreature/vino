@@ -10,6 +10,7 @@ struct PortMap {
     static constexpr int control = 48920;
     static constexpr int preview = 48921;
     static constexpr int batch_gateway = 49020;
+    static constexpr int local_node_api = 49030;
 };
 
 struct TargetSelector {

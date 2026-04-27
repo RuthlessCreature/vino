@@ -7,6 +7,8 @@ public final class ControlPlaneCoordinator: ObservableObject {
     @Published public private(set) var serviceSummary: String
     @Published public private(set) var lastStatusJSON: String
 
+    public var mediaCaptureMirror: ((URL, String) -> Void)?
+
     private let listenerPort: UInt16 = 48920
     private let previewListenerPort: UInt16 = 48921
     private let deviceID: String
@@ -45,6 +47,7 @@ public final class ControlPlaneCoordinator: ObservableObject {
         cameraController.onMediaCaptured = { [weak self] url, category in
             Task { @MainActor [weak self] in
                 await self?.pushMedia(url: url, category: category)
+                self?.mediaCaptureMirror?(url, category)
             }
         }
         cameraController.onPhotoDataCaptured = { [weak inferenceRuntime] data in
@@ -52,13 +55,28 @@ public final class ControlPlaneCoordinator: ObservableObject {
         }
 
         Task {
-            if let catalog = try? await modelStore.loadCatalog() {
+            do {
+                var catalog = try await modelStore.importBundledModelsIfNeeded()
+                if catalog.activeModels.count > 1, let primaryModelID = catalog.activeModels.first?.id {
+                    try? await modelStore.activateExclusively(modelID: primaryModelID)
+                    if let normalizedCatalog = try? await modelStore.loadCatalog() {
+                        catalog = normalizedCatalog
+                    }
+                }
                 appState.modelCatalog = catalog
                 appState.selectedModelID = catalog.activeModels.first?.id ?? catalog.models.first?.id
+                if let activeModel = catalog.activeModels.first {
+                    appState.lastStatusMessage = "模型已就绪 · \(activeModel.name)"
+                } else if !catalog.models.isEmpty {
+                    appState.lastStatusMessage = "发现本地模型，但没有激活项"
+                } else {
+                    appState.lastStatusMessage = "未发现本地模型"
+                }
                 inferenceRuntime.refreshModels(from: catalog)
-            } else {
+            } catch {
                 appState.modelCatalog = CoreMLCatalog(models: [])
                 appState.selectedModelID = nil
+                appState.lastStatusMessage = "模型加载失败 · \(error.localizedDescription)"
                 inferenceRuntime.refreshModels(from: appState.modelCatalog)
             }
             inferenceRuntime.setEnabled(appState.inferenceEnabled)
@@ -525,7 +543,11 @@ public final class ControlPlaneCoordinator: ObservableObject {
         }
 
         Task {
-            try? await self.modelStore.updateFlags(modelID: modelID, isEnabled: isActive ? true : nil, isActive: isActive)
+            if isActive {
+                try? await self.modelStore.activateExclusively(modelID: modelID)
+            } else {
+                try? await self.modelStore.updateFlags(modelID: modelID, isActive: false)
+            }
             await MainActor.run {
                 if isActive {
                     appState.activateModel(modelID: modelID)
@@ -556,18 +578,24 @@ public final class ControlPlaneCoordinator: ObservableObject {
         let transportFormat = (payload?["transportFormat"] as? String) ?? "raw-file"
 
         Task {
-            await modelStore.beginInstall(
-                transferID: transferID,
-                modelID: modelID,
-                modelName: modelName,
-                version: version,
-                fileName: fileName,
-                sourceFormat: sourceFormat,
-                transportFormat: transportFormat
-            )
+            do {
+                try await modelStore.beginInstall(
+                    transferID: transferID,
+                    modelID: modelID,
+                    modelName: modelName,
+                    version: version,
+                    fileName: fileName,
+                    sourceFormat: sourceFormat,
+                    transportFormat: transportFormat
+                )
 
-            await MainActor.run {
-                self.sendReply(to: peerID, correlationID: correlationID, action: action, status: "accepted", message: "model transfer opened")
+                await MainActor.run {
+                    self.sendReply(to: peerID, correlationID: correlationID, action: action, status: "accepted", message: "model transfer opened")
+                }
+            } catch {
+                await MainActor.run {
+                    self.sendReply(to: peerID, correlationID: correlationID, action: action, status: "rejected", message: "model transfer open failed")
+                }
             }
         }
     }
@@ -610,7 +638,7 @@ public final class ControlPlaneCoordinator: ObservableObject {
             do {
                 let record = try await modelStore.commitInstall(transferID: transferID)
                 if activateAfterInstall {
-                    try? await self.modelStore.updateFlags(modelID: record.id, isEnabled: true, isActive: true)
+                    try? await self.modelStore.activateExclusively(modelID: record.id)
                 }
                 await MainActor.run {
                     appState.installModel(record)

@@ -15,6 +15,23 @@
 - `Sources/Networking/ControlPlaneCoordinator.swift`：Bonjour + TCP JSONL 控制面、状态回推、模型传输
 - `Sources/Inference/InferenceRuntime.swift`：多模型并行 Vision/CoreML 推理运行时
 - `Sources/Models/ModelFileStore.swift`：CoreML 模型安装、编译、激活、删除
+- `Sources/Auth/*`：云端登录、Keychain 会话恢复
+- `Sources/Networking/CloudControlCoordinator.swift`：云模型同步、下载、租约续期、缓冲补传
+- `Sources/Networking/AssetUploadService.swift`：拍照/推理结果落地缓冲并上传到 `vino_local` / `vino_cloud`
+
+## 当前 MVP 能力
+
+- 默认云端地址：`http://172.20.10.3:8787`
+- 云端登录、会话持久化、模型目录拉取
+- 模型下载票据、加密产物下载、AES-GCM 解密、SHA-256 校验
+- 离线租约与设备绑定校验
+- 本地缓冲图片/结果后补传
+- Overlay 内直接配置并自动记住 `cloudBaseURL` / `localNodeBaseURL` / 账号 / 密码（密码存 Keychain）
+
+## 当前边界
+
+- 当前模型保护为 `ticket secret + AES-GCM + hash + lease + device-binding + 本地 Keychain 会话`
+- 解密后运行时仍需落地 `mlmodelc` 供 CoreML 加载，因此这不是最终形态的白盒防护
 
 ## 构建命令
 

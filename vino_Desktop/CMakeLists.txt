@@ -9,6 +9,7 @@ set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 
 find_package(Threads REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 add_library(vino_desktop_core
     src/core/Blueprint.cpp
@@ -42,6 +43,25 @@ add_executable(vino_desktop_blueprint
 )
 
 target_link_libraries(vino_desktop_blueprint PRIVATE vino_desktop_core)
+
+add_executable(vino_local_node
+    src/node/LocalNodeApi.cpp
+    src/node/LocalNodeConsoleAssets.cpp
+    src/node/LocalNodeForwarder.cpp
+    src/node/LocalNodeStorage.cpp
+    src/node_main.cpp
+)
+
+target_include_directories(vino_local_node
+    PRIVATE
+        include
+)
+
+target_link_libraries(vino_local_node
+    PRIVATE
+        vino_desktop_core
+        SQLite3::SQLite3
+)
 
 if(APPLE)
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)

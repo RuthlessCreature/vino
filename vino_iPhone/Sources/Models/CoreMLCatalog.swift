@@ -6,19 +6,43 @@ public struct CoreMLModelRecord: Identifiable, Codable, Hashable {
     public var version: String
     public var isEnabled: Bool
     public var isActive: Bool
+    public var modelBuildID: String?
+    public var modelHash: String?
+    public var licenseID: String?
+    public var organizationID: String?
+    public var leaseExpiresAt: String?
+    public var policyFlags: [String]
+    public var isEncrypted: Bool
+    public var deviceBindingID: String?
 
     public init(
         id: String,
         name: String,
         version: String,
         isEnabled: Bool = true,
-        isActive: Bool = false
+        isActive: Bool = false,
+        modelBuildID: String? = nil,
+        modelHash: String? = nil,
+        licenseID: String? = nil,
+        organizationID: String? = nil,
+        leaseExpiresAt: String? = nil,
+        policyFlags: [String] = [],
+        isEncrypted: Bool = false,
+        deviceBindingID: String? = nil
     ) {
         self.id = id
         self.name = name
         self.version = version
         self.isEnabled = isEnabled
         self.isActive = isActive
+        self.modelBuildID = modelBuildID
+        self.modelHash = modelHash
+        self.licenseID = licenseID
+        self.organizationID = organizationID
+        self.leaseExpiresAt = leaseExpiresAt
+        self.policyFlags = policyFlags
+        self.isEncrypted = isEncrypted
+        self.deviceBindingID = deviceBindingID
     }
 }
 
@@ -57,6 +81,8 @@ public struct CoreMLCatalog: Codable, Hashable {
             if models[index].id == modelID {
                 models[index].isActive = true
                 models[index].isEnabled = true
+            } else {
+                models[index].isActive = false
             }
         }
     }

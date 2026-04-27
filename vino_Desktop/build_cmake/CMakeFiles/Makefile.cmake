@@ -26,6 +26,8 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/Compiler/GNU.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/FindPackageHandleStandardArgs.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/FindPackageMessage.cmake"
+  "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/FindPkgConfig.cmake"
+  "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/FindSQLite3.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/FindThreads.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/Internal/CMakeCXXLinkerInformation.cmake"
   "/Applications/CMake.app/Contents/share/cmake-4.3/Modules/Internal/CMakeCommonLinkerInformation.cmake"
@@ -70,5 +72,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/vino_desktop_core.dir/DependInfo.cmake"
   "CMakeFiles/vino_desktop_blueprint.dir/DependInfo.cmake"
+  "CMakeFiles/vino_local_node.dir/DependInfo.cmake"
   "CMakeFiles/vino_desktop_app.dir/DependInfo.cmake"
   )

@@ -143,6 +143,19 @@ vino_desktop_blueprint/fast:
 .PHONY : vino_desktop_blueprint/fast
 
 #=============================================================================
+# Target rules for targets named vino_local_node
+
+# Build rule for target.
+vino_local_node: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 vino_local_node
+.PHONY : vino_local_node
+
+# fast build rule for target.
+vino_local_node/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/build
+.PHONY : vino_local_node/fast
+
+#=============================================================================
 # Target rules for targets named vino_desktop_app
 
 # Build rule for target.
@@ -323,6 +336,126 @@ src/network/PostGateway.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_core.dir/build.make CMakeFiles/vino_desktop_core.dir/src/network/PostGateway.cpp.s
 .PHONY : src/network/PostGateway.cpp.s
 
+src/node/LocalNodeApi.o: src/node/LocalNodeApi.cpp.o
+.PHONY : src/node/LocalNodeApi.o
+
+# target to build an object file
+src/node/LocalNodeApi.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeApi.cpp.o
+.PHONY : src/node/LocalNodeApi.cpp.o
+
+src/node/LocalNodeApi.i: src/node/LocalNodeApi.cpp.i
+.PHONY : src/node/LocalNodeApi.i
+
+# target to preprocess a source file
+src/node/LocalNodeApi.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeApi.cpp.i
+.PHONY : src/node/LocalNodeApi.cpp.i
+
+src/node/LocalNodeApi.s: src/node/LocalNodeApi.cpp.s
+.PHONY : src/node/LocalNodeApi.s
+
+# target to generate assembly for a file
+src/node/LocalNodeApi.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeApi.cpp.s
+.PHONY : src/node/LocalNodeApi.cpp.s
+
+src/node/LocalNodeConsoleAssets.o: src/node/LocalNodeConsoleAssets.cpp.o
+.PHONY : src/node/LocalNodeConsoleAssets.o
+
+# target to build an object file
+src/node/LocalNodeConsoleAssets.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeConsoleAssets.cpp.o
+.PHONY : src/node/LocalNodeConsoleAssets.cpp.o
+
+src/node/LocalNodeConsoleAssets.i: src/node/LocalNodeConsoleAssets.cpp.i
+.PHONY : src/node/LocalNodeConsoleAssets.i
+
+# target to preprocess a source file
+src/node/LocalNodeConsoleAssets.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeConsoleAssets.cpp.i
+.PHONY : src/node/LocalNodeConsoleAssets.cpp.i
+
+src/node/LocalNodeConsoleAssets.s: src/node/LocalNodeConsoleAssets.cpp.s
+.PHONY : src/node/LocalNodeConsoleAssets.s
+
+# target to generate assembly for a file
+src/node/LocalNodeConsoleAssets.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeConsoleAssets.cpp.s
+.PHONY : src/node/LocalNodeConsoleAssets.cpp.s
+
+src/node/LocalNodeForwarder.o: src/node/LocalNodeForwarder.cpp.o
+.PHONY : src/node/LocalNodeForwarder.o
+
+# target to build an object file
+src/node/LocalNodeForwarder.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeForwarder.cpp.o
+.PHONY : src/node/LocalNodeForwarder.cpp.o
+
+src/node/LocalNodeForwarder.i: src/node/LocalNodeForwarder.cpp.i
+.PHONY : src/node/LocalNodeForwarder.i
+
+# target to preprocess a source file
+src/node/LocalNodeForwarder.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeForwarder.cpp.i
+.PHONY : src/node/LocalNodeForwarder.cpp.i
+
+src/node/LocalNodeForwarder.s: src/node/LocalNodeForwarder.cpp.s
+.PHONY : src/node/LocalNodeForwarder.s
+
+# target to generate assembly for a file
+src/node/LocalNodeForwarder.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeForwarder.cpp.s
+.PHONY : src/node/LocalNodeForwarder.cpp.s
+
+src/node/LocalNodeStorage.o: src/node/LocalNodeStorage.cpp.o
+.PHONY : src/node/LocalNodeStorage.o
+
+# target to build an object file
+src/node/LocalNodeStorage.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeStorage.cpp.o
+.PHONY : src/node/LocalNodeStorage.cpp.o
+
+src/node/LocalNodeStorage.i: src/node/LocalNodeStorage.cpp.i
+.PHONY : src/node/LocalNodeStorage.i
+
+# target to preprocess a source file
+src/node/LocalNodeStorage.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeStorage.cpp.i
+.PHONY : src/node/LocalNodeStorage.cpp.i
+
+src/node/LocalNodeStorage.s: src/node/LocalNodeStorage.cpp.s
+.PHONY : src/node/LocalNodeStorage.s
+
+# target to generate assembly for a file
+src/node/LocalNodeStorage.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node/LocalNodeStorage.cpp.s
+.PHONY : src/node/LocalNodeStorage.cpp.s
+
+src/node_main.o: src/node_main.cpp.o
+.PHONY : src/node_main.o
+
+# target to build an object file
+src/node_main.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node_main.cpp.o
+.PHONY : src/node_main.cpp.o
+
+src/node_main.i: src/node_main.cpp.i
+.PHONY : src/node_main.i
+
+# target to preprocess a source file
+src/node_main.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node_main.cpp.i
+.PHONY : src/node_main.cpp.i
+
+src/node_main.s: src/node_main.cpp.s
+.PHONY : src/node_main.s
+
+# target to generate assembly for a file
+src/node_main.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/src/node_main.cpp.s
+.PHONY : src/node_main.cpp.s
+
 src/protocol/MiniJson.o: src/protocol/MiniJson.cpp.o
 .PHONY : src/protocol/MiniJson.o
 
@@ -438,6 +571,7 @@ help:
 	@echo "... vino_desktop_app"
 	@echo "... vino_desktop_blueprint"
 	@echo "... vino_desktop_core"
+	@echo "... vino_local_node"
 	@echo "... src/core/Blueprint.o"
 	@echo "... src/core/Blueprint.i"
 	@echo "... src/core/Blueprint.s"
@@ -459,6 +593,21 @@ help:
 	@echo "... src/network/PostGateway.o"
 	@echo "... src/network/PostGateway.i"
 	@echo "... src/network/PostGateway.s"
+	@echo "... src/node/LocalNodeApi.o"
+	@echo "... src/node/LocalNodeApi.i"
+	@echo "... src/node/LocalNodeApi.s"
+	@echo "... src/node/LocalNodeConsoleAssets.o"
+	@echo "... src/node/LocalNodeConsoleAssets.i"
+	@echo "... src/node/LocalNodeConsoleAssets.s"
+	@echo "... src/node/LocalNodeForwarder.o"
+	@echo "... src/node/LocalNodeForwarder.i"
+	@echo "... src/node/LocalNodeForwarder.s"
+	@echo "... src/node/LocalNodeStorage.o"
+	@echo "... src/node/LocalNodeStorage.i"
+	@echo "... src/node/LocalNodeStorage.s"
+	@echo "... src/node_main.o"
+	@echo "... src/node_main.i"
+	@echo "... src/node_main.s"
 	@echo "... src/protocol/MiniJson.o"
 	@echo "... src/protocol/MiniJson.i"
 	@echo "... src/protocol/MiniJson.s"

@@ -1,5 +1,6 @@
 /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/vino_desktop_core.dir
 /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/vino_desktop_blueprint.dir
+/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/vino_local_node.dir
 /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/vino_desktop_app.dir
 /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/edit_cache.dir
 /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles/rebuild_cache.dir

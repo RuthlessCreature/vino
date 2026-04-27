@@ -1,9 +1,12 @@
 import SwiftUI
+import UIKit
 
 public struct CameraOverlayView: View {
     @ObservedObject private var appState: VinoAppState
     @ObservedObject private var cameraController: CameraSessionController
     @ObservedObject private var controlPlane: ControlPlaneCoordinator
+    @ObservedObject private var cloudCoordinator: CloudControlCoordinator
+    @State private var isCloudCatalogPresented = false
 
     @Binding private var isTopGridVisible: Bool
     @Binding private var isControlDeckVisible: Bool
@@ -15,12 +18,14 @@ public struct CameraOverlayView: View {
         cameraController: CameraSessionController,
         ipAddresses: [IPAddressDescriptor],
         controlPlane: ControlPlaneCoordinator,
+        cloudCoordinator: CloudControlCoordinator,
         isTopGridVisible: Binding<Bool>,
         isControlDeckVisible: Binding<Bool>
     ) {
         self._appState = ObservedObject(wrappedValue: appState)
         self._cameraController = ObservedObject(wrappedValue: cameraController)
         self._controlPlane = ObservedObject(wrappedValue: controlPlane)
+        self._cloudCoordinator = ObservedObject(wrappedValue: cloudCoordinator)
         self._isTopGridVisible = isTopGridVisible
         self._isControlDeckVisible = isControlDeckVisible
         self.ipAddresses = ipAddresses
@@ -70,6 +75,9 @@ public struct CameraOverlayView: View {
             .animation(.easeInOut(duration: 0.18), value: isControlDeckVisible)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $isCloudCatalogPresented) {
+            CloudModelCatalogSheet(appState: appState, cloudCoordinator: cloudCoordinator)
+        }
     }
 
     private func topStatusBar(width: CGFloat) -> some View {
@@ -98,6 +106,8 @@ public struct CameraOverlayView: View {
             if appState.inferenceEnabled {
                 topChip("推理", color: VinoTheme.success)
             }
+
+            topChip(appState.cloudSession == nil ? "云未登" : "云已登", color: appState.cloudSession == nil ? .white.opacity(0.45) : VinoTheme.success)
 
             if appState.isRecording {
                 topChip("录制中", color: VinoTheme.danger)
@@ -148,6 +158,18 @@ public struct CameraOverlayView: View {
                     infoLine("全部 IP", ipAddresses.isEmpty ? "等待网络" : ipAddresses.map(\.displayValue).joined(separator: "  |  "))
                     infoLine("服务", controlPlane.serviceSummary)
                     infoLine("模型", activeModelSummary)
+                }
+
+                infoCard(title: "云端") {
+                    infoLine("会话", appState.cloudSessionSummary)
+                    infoLine("同步", appState.lastCloudSyncAt.isEmpty ? "未同步" : appState.lastCloudSyncAt)
+                    infoLine("消息", appState.lastCloudMessage)
+                }
+
+                infoCard(title: "云控制") {
+                    infoLine("登录网址", trimmedOrFallback(appState.cloudBaseURL))
+                    infoLine("账号", trimmedOrFallback(appState.cloudLoginEmail))
+                    infoLine("状态", cloudTaskSummary)
                 }
             }
         }
@@ -250,12 +272,58 @@ public struct CameraOverlayView: View {
 
                     HStack(spacing: 8) {
                         compactToggle(title: "推理", isOn: $appState.inferenceEnabled)
-                        compactToggle(title: "推送媒体", isOn: $appState.persistMediaEnabled)
+                        compactInfoStrip(title: "云状态", value: cloudTaskSummary)
                     }
 
                     compactInfoStrip(title: "状态", value: appState.lastStatusMessage)
                     compactInfoStrip(title: "模型", value: activeModelSummary)
                     compactInfoStrip(title: "最近文件", value: cameraController.lastCapturedFileURL?.lastPathComponent ?? "暂无")
+                    compactInfoStrip(title: "云端", value: appState.cloudSessionSummary)
+
+                    HStack(spacing: 8) {
+                        compactActionButton(
+                            title: appState.cloudSession == nil ? "云端登录" : "退出登录",
+                            color: appState.cloudSession == nil ? VinoTheme.success : .white.opacity(0.12),
+                            foreground: appState.cloudSession == nil ? .black : .white,
+                            enabled: !cloudCoordinator.isBusy
+                        ) {
+                            if appState.cloudSession == nil {
+                                cloudCoordinator.signIn()
+                            } else {
+                                cloudCoordinator.signOut()
+                            }
+                        }
+
+                        compactActionButton(
+                            title: "同步模型清单",
+                            color: VinoTheme.accent,
+                            foreground: .black,
+                            enabled: appState.cloudSession != nil && !cloudCoordinator.isBusy
+                        ) {
+                            presentCloudModelCatalog()
+                        }
+                    }
+
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        CompactTextEntryCard(
+                            title: "登录网址",
+                            text: $appState.cloudBaseURL,
+                            keyboardType: .URL,
+                            textContentType: .URL
+                        )
+                        CompactTextEntryCard(
+                            title: "账号",
+                            text: $appState.cloudLoginEmail,
+                            keyboardType: .emailAddress,
+                            textContentType: .username
+                        )
+                        CompactTextEntryCard(
+                            title: "密码",
+                            text: $appState.cloudLoginPassword,
+                            isSecure: true,
+                            textContentType: .password
+                        )
+                    }
 
                     LazyVGrid(columns: columns, spacing: 8) {
                         CompactAdjustableControlCard(
@@ -357,6 +425,13 @@ public struct CameraOverlayView: View {
         ].joined(separator: "  |  ")
     }
 
+    private var cloudTaskSummary: String {
+        if cloudCoordinator.isBusy {
+            return "处理中…"
+        }
+        return cloudCoordinator.lastErrorMessage ?? cloudCoordinator.statusSummary
+    }
+
     private var primaryActionTitle: String {
         switch appState.captureMode {
         case .photo:
@@ -369,10 +444,24 @@ public struct CameraOverlayView: View {
     private var activeModelSummary: String {
         let activeModels = appState.modelCatalog.activeModels
         if activeModels.isEmpty {
-            return "未启用模型"
+            return "未加载模型"
         }
 
         return activeModels.map { "\($0.name)@\($0.version)" }.joined(separator: "  |  ")
+    }
+
+    private func trimmedOrFallback(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "-" : trimmed
+    }
+
+    private func presentCloudModelCatalog() {
+        guard appState.cloudSession != nil else {
+            appState.lastCloudMessage = "请先登录云端"
+            return
+        }
+        isCloudCatalogPresented = true
+        cloudCoordinator.syncCatalog()
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -454,6 +543,7 @@ public struct CameraOverlayView: View {
         title: String,
         color: Color,
         foreground: Color,
+        enabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -465,8 +555,10 @@ public struct CameraOverlayView: View {
                 .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(foreground)
-        .background(color, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .foregroundStyle(enabled ? foreground : foreground.opacity(0.5))
+        .background((enabled ? color : color.opacity(0.35)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .opacity(enabled ? 1 : 0.72)
+        .disabled(!enabled)
     }
 
     private func compactToggle(
@@ -541,6 +633,224 @@ public struct CameraOverlayView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct CloudModelCatalogSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @ObservedObject private var appState: VinoAppState
+    @ObservedObject private var cloudCoordinator: CloudControlCoordinator
+
+    init(appState: VinoAppState, cloudCoordinator: CloudControlCoordinator) {
+        self._appState = ObservedObject(wrappedValue: appState)
+        self._cloudCoordinator = ObservedObject(wrappedValue: cloudCoordinator)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    summaryCard
+
+                    if cloudCoordinator.isBusy && appState.cloudCatalog.models.isEmpty {
+                        loadingCard
+                    } else if appState.cloudCatalog.models.isEmpty {
+                        emptyCard
+                    } else {
+                        ForEach(appState.cloudCatalog.models) { descriptor in
+                            modelCard(descriptor)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("模型下载")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("退出") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("刷新") {
+                        cloudCoordinator.syncCatalog()
+                    }
+                    .disabled(cloudCoordinator.isBusy || appState.cloudSession == nil)
+                }
+            }
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(appState.cloudSessionSummary)
+                .font(.headline)
+
+            Text(syncStatusText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if let lastError = cloudCoordinator.lastErrorMessage, !lastError.isEmpty {
+                Text(lastError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var loadingCard: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text("正在同步模型清单…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var emptyCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("当前账号还没有可下载的模型")
+                .font(.headline)
+            Text("你可以点右上角刷新，或者直接退出不下载。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func modelCard(_ descriptor: CloudModelDescriptor) -> some View {
+        let installedRecord = appState.modelCatalog.models.first(where: { $0.id == descriptor.id })
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(descriptor.name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text("版本 \(descriptor.version)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                if let installedRecord {
+                    statusChip(title: installedRecord.isActive ? "已加载" : "已下载")
+                }
+            }
+
+            Text(descriptor.summary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                detailChip(title: ByteCountFormatter.string(fromByteCount: Int64(descriptor.byteCount), countStyle: .file))
+                detailChip(title: descriptor.sourceFormat.uppercased())
+                if descriptor.isEncrypted {
+                    detailChip(title: "加密")
+                }
+            }
+
+            Button {
+                cloudCoordinator.downloadModel(modelID: descriptor.id)
+                dismiss()
+            } label: {
+                Text(installedRecord?.isActive == true ? "重新下载并加载" : "下载并加载到 iPhone")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.black)
+            .background(VinoTheme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .disabled(cloudCoordinator.isBusy)
+            .opacity(cloudCoordinator.isBusy ? 0.6 : 1)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var syncStatusText: String {
+        if cloudCoordinator.isBusy {
+            return "正在同步模型清单…"
+        }
+        if let syncedAt = appState.cloudCatalog.syncedAt ?? (!appState.lastCloudSyncAt.isEmpty ? appState.lastCloudSyncAt : nil) {
+            return "已同步：\(syncedAt)"
+        }
+        return "还没有同步过模型清单"
+    }
+
+    private func statusChip(title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(VinoTheme.success, in: Capsule(style: .continuous))
+    }
+
+    private func detailChip(title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(.tertiarySystemGroupedBackground), in: Capsule(style: .continuous))
+    }
+}
+
+private struct CompactTextEntryCard: View {
+    let title: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    var keyboardType: UIKeyboardType = .default
+    var textContentType: UITextContentType?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(VinoTheme.textSecondary)
+
+            if isSecure {
+                SecureField(title, text: $text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .keyboardType(keyboardType)
+                    .textContentType(textContentType)
+                    .submitLabel(.done)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white)
+            } else {
+                TextField(title, text: $text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .keyboardType(keyboardType)
+                    .textContentType(textContentType)
+                    .submitLabel(.done)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(VinoTheme.panelStroke, lineWidth: 1)
+        )
     }
 }
 

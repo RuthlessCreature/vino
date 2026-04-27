@@ -65,12 +65,14 @@ CMAKE_BINARY_DIR = /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cma
 # The main recursive "all" target.
 all: CMakeFiles/vino_desktop_core.dir/all
 all: CMakeFiles/vino_desktop_blueprint.dir/all
+all: CMakeFiles/vino_local_node.dir/all
 all: CMakeFiles/vino_desktop_app.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
 codegen: CMakeFiles/vino_desktop_core.dir/codegen
 codegen: CMakeFiles/vino_desktop_blueprint.dir/codegen
+codegen: CMakeFiles/vino_local_node.dir/codegen
 codegen: CMakeFiles/vino_desktop_app.dir/codegen
 .PHONY : codegen
 
@@ -81,6 +83,7 @@ preinstall:
 # The main recursive "clean" target.
 clean: CMakeFiles/vino_desktop_core.dir/clean
 clean: CMakeFiles/vino_desktop_blueprint.dir/clean
+clean: CMakeFiles/vino_local_node.dir/clean
 clean: CMakeFiles/vino_desktop_app.dir/clean
 .PHONY : clean
 
@@ -147,6 +150,38 @@ CMakeFiles/vino_desktop_blueprint.dir/codegen:
 CMakeFiles/vino_desktop_blueprint.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_desktop_blueprint.dir/build.make CMakeFiles/vino_desktop_blueprint.dir/clean
 .PHONY : CMakeFiles/vino_desktop_blueprint.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/vino_local_node.dir
+
+# All Build rule for target.
+CMakeFiles/vino_local_node.dir/all: CMakeFiles/vino_desktop_core.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=16,17,18,19,20,21 "Built target vino_local_node"
+.PHONY : CMakeFiles/vino_local_node.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/vino_local_node.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 17
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/vino_local_node.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles 0
+.PHONY : CMakeFiles/vino_local_node.dir/rule
+
+# Convenience name for target.
+vino_local_node: CMakeFiles/vino_local_node.dir/rule
+.PHONY : vino_local_node
+
+# codegen rule for target.
+CMakeFiles/vino_local_node.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/cengcheng/Documents/GitHub/vino/vino_Desktop/build_cmake/CMakeFiles --progress-num=16,17,18,19,20,21 "Finished codegen for target vino_local_node"
+.PHONY : CMakeFiles/vino_local_node.dir/codegen
+
+# clean rule for target.
+CMakeFiles/vino_local_node.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/vino_local_node.dir/build.make CMakeFiles/vino_local_node.dir/clean
+.PHONY : CMakeFiles/vino_local_node.dir/clean
 
 #=============================================================================
 # Target rules for target CMakeFiles/vino_desktop_app.dir

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vino Cloud Console</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="shell">
+    <section id="loginSection" class="auth-shell">
+      <div class="auth-panel">
+        <div class="eyebrow">vino Cloud</div>
+        <h1>管理员登录</h1>
+        <p class="subtitle">cloud 控制台需要管理员登录后才能查看用户、授权、模型和结果。</p>
+
+        <form id="loginForm" class="form-stack">
+          <div class="form-grid single-column">
+            <label>
+              <span>账号</span>
+              <input id="loginAccountInput" name="account" type="text" autocomplete="username" required />
+            </label>
+            <label>
+              <span>密码</span>
+              <input id="loginPasswordInput" name="password" type="password" autocomplete="off" required />
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">登录后台</button>
+          </div>
+          <div id="loginErrorLabel" class="error-text is-hidden"></div>
+        </form>
+      </div>
+    </section>
+
+    <div id="dashboardSection" class="dashboard-shell is-hidden">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">vino Cloud</div>
+          <h1>云端业务控制台</h1>
+          <p class="subtitle">在这里分配用户可见模型，设置永久或截止时间授权，并统一查看云端结果。</p>
+        </div>
+        <div class="hero-actions">
+          <div class="status-pill" id="currentAdminLabel">未登录</div>
+          <div class="status-pill" id="lastUpdatedLabel">等待首次加载</div>
+          <button id="refreshButton" class="btn btn-primary">刷新</button>
+          <button id="logoutButton" class="btn" type="button">退出登录</button>
+        </div>
+      </header>
+
+      <section class="cards" id="summaryCards"></section>
+
+      <section class="admin-grid">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>用户管理</h2>
+            <span class="muted" id="userCountLabel">0 个</span>
+          </div>
+          <form id="userForm" class="form-stack">
+            <div class="form-grid">
+              <label>
+                <span>显示名</span>
+                <input id="userDisplayNameInput" name="displayName" type="text" placeholder="如：Line A Operator" required />
+              </label>
+              <label>
+                <span>邮箱 / 账号</span>
+                <input id="userEmailInput" name="email" type="text" placeholder="operator 或 operator@vino.cc" required />
+              </label>
+              <label>
+                <span>密码</span>
+                <input id="userPasswordInput" name="password" type="text" placeholder="留空则更新时不改密码" />
+              </label>
+              <label>
+                <span>角色</span>
+                <select id="userRoleInput" name="role">
+                  <option value="member">成员</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </label>
+              <label>
+                <span>组织 ID</span>
+                <input id="userOrganizationIdInput" name="organizationId" type="text" value="org-demo-001" required />
+              </label>
+              <label>
+                <span>组织名称</span>
+                <input id="userOrganizationNameInput" name="organizationName" type="text" value="Vino Demo Factory" required />
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">保存用户</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>角色</th>
+                  <th>组织</th>
+                  <th>已分配模型</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>授权分配</h2>
+            <span class="muted" id="entitlementCountLabel">0 条</span>
+          </div>
+          <form id="entitlementForm" class="form-stack">
+            <input id="entitlementIdInput" name="entitlementId" type="hidden" />
+            <div class="form-grid">
+              <label>
+                <span>分配对象</span>
+                <select id="entitlementAssignedToInput" name="assignedToId" required></select>
+              </label>
+              <label>
+                <span>模型</span>
+                <select id="entitlementModelInput" name="modelId" required></select>
+              </label>
+              <label>
+                <span>续租模式</span>
+                <select id="entitlementRenewalModeInput" name="renewalMode">
+                  <option value="perpetual">永久</option>
+                  <option value="fixed">截止到某天</option>
+                </select>
+              </label>
+              <label id="renewalEndsAtField">
+                <span>截止时间</span>
+                <input id="entitlementRenewalEndsAtInput" name="renewalEndsAt" type="datetime-local" />
+              </label>
+              <label>
+                <span>License ID</span>
+                <input id="entitlementLicenseIdInput" name="licenseId" type="text" placeholder="可留空自动生成" />
+              </label>
+              <label class="checkbox-field">
+                <input id="entitlementDeviceBindingInput" name="deviceBindingRequired" type="checkbox" checked />
+                <span>启用设备绑定</span>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">保存授权</button>
+              <button id="cancelEntitlementEditButton" class="btn" type="button">清空表单</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>对象</th>
+                  <th>模型</th>
+                  <th>模式</th>
+                  <th>截止时间</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="entitlementsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模型目录</h2>
+          <span class="muted" id="modelCountLabel">0 个</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>版本</th>
+                <th>分配数</th>
+                <th>用户级</th>
+                <th>组织级</th>
+                <th>体积</th>
+              </tr>
+            </thead>
+            <tbody id="modelsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>最近资产</h2>
+            <span class="muted" id="assetCountLabel">0 条</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>设备</th>
+                  <th>文件</th>
+                  <th>类别</th>
+                  <th>采集时间</th>
+                </tr>
+              </thead>
+              <tbody id="assetsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>最近结果</h2>
+            <span class="muted" id="resultCountLabel">0 条</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>设备</th>
+                  <th>类型</th>
+                  <th>工单</th>
+                  <th>采集时间</th>
+                </tr>
+              </thead>
+              <tbody id="resultsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

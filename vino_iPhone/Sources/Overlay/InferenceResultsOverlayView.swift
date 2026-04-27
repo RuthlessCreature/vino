@@ -3,9 +3,11 @@ import Vision
 
 public struct InferenceResultsOverlayView: View {
     public let detections: [InferenceDetection]
+    public let imageSize: CGSize?
 
-    public init(detections: [InferenceDetection]) {
+    public init(detections: [InferenceDetection], imageSize: CGSize? = nil) {
         self.detections = detections
+        self.imageSize = imageSize
     }
 
     public var body: some View {
@@ -13,7 +15,7 @@ public struct InferenceResultsOverlayView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(detections) { detection in
                     if let boundingBox = detection.boundingBox {
-                        let rect = Self.rect(for: boundingBox, in: geometry.size)
+                        let rect = Self.rect(for: boundingBox, in: geometry.size, imageSize: imageSize)
 
                         ZStack(alignment: .topLeading) {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -43,18 +45,44 @@ public struct InferenceResultsOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    private static func rect(for normalizedRect: CGRect, in size: CGSize) -> CGRect {
+    private static func rect(for normalizedRect: CGRect, in size: CGSize, imageSize: CGSize?) -> CGRect {
+        let sourceSize = displayImageSize(for: imageSize, viewportSize: size)
         let converted = VNImageRectForNormalizedRect(
             normalizedRect,
-            Int(size.width),
-            Int(size.height)
+            Int(sourceSize.width),
+            Int(sourceSize.height)
         )
 
-        return CGRect(
+        let flippedRect = CGRect(
             x: converted.origin.x,
-            y: size.height - converted.origin.y - converted.size.height,
+            y: sourceSize.height - converted.origin.y - converted.size.height,
             width: converted.size.width,
             height: converted.size.height
         )
+
+        let scale = max(size.width / sourceSize.width, size.height / sourceSize.height)
+        let scaledWidth = sourceSize.width * scale
+        let scaledHeight = sourceSize.height * scale
+        let offsetX = (size.width - scaledWidth) * 0.5
+        let offsetY = (size.height - scaledHeight) * 0.5
+
+        return CGRect(
+            x: flippedRect.origin.x * scale + offsetX,
+            y: flippedRect.origin.y * scale + offsetY,
+            width: flippedRect.width * scale,
+            height: flippedRect.height * scale
+        )
+    }
+
+    private static func displayImageSize(for rawImageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let rawImageSize, rawImageSize.width > 0, rawImageSize.height > 0 else {
+            return viewportSize
+        }
+
+        if rawImageSize.width > rawImageSize.height {
+            return CGSize(width: rawImageSize.height, height: rawImageSize.width)
+        }
+
+        return rawImageSize
     }
 }

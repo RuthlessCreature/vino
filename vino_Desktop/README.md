@@ -14,6 +14,7 @@
 - 数据终端增强：日志搜索、级别过滤、当前设备过滤、彩色等级显示、导出日志
 - 结果归档浏览：按设备浏览最新媒体文件，并支持直接打开或在 Finder 中定位
 - `build_local.sh`：基于 `CMake` 的本地一键构建入口
+- `vino_local_node`：无 GUI 的本地接收节点，含 `SQLite` 资产索引、本地 API、Outbox 队列和云端自动转发
 
 ## UI 方向
 
@@ -63,10 +64,40 @@ CLI / daemon：
 ./build_cmake/vino_desktop_blueprint --daemon --connect 192.168.31.25
 ```
 
+LocalNode：
+
+```sh
+./build_cmake/vino_local_node --api-port 49030 --batch-port 49020
+```
+
+启用云端自动转发：
+
+```sh
+./build_cmake/vino_local_node \
+  --api-port 49030 \
+  --batch-port 49020 \
+  --cloud-base-url http://127.0.0.1:8787 \
+  --cloud-sync on
+```
+
 批量接口默认监听：
 
 - `http://127.0.0.1:49020/api/v1/batch`
 - `http://127.0.0.1:49020/api/v1/devices`
+
+本地节点接口默认监听：
+
+- `http://127.0.0.1:49030/`
+- `http://127.0.0.1:49030/api/local/v1/health`
+- `http://127.0.0.1:49030/api/local/v1/devices`
+- `http://127.0.0.1:49030/api/local/v1/storage/summary`
+- `http://127.0.0.1:49030/api/local/v1/assets`
+- `http://127.0.0.1:49030/api/local/v1/outbox`
+- `http://127.0.0.1:49030/api/local/v1/cloud/config`
+- `http://127.0.0.1:49030/api/local/v1/ingest/asset`
+- `http://127.0.0.1:49030/api/local/v1/ingest/result`
+- `http://127.0.0.1:49030/api/local/v1/ingest/log`
+- `http://127.0.0.1:49030/api/local/v1/ingest/stat`
 
 macOS App 运行时数据目录：
 
@@ -87,3 +118,5 @@ macOS App 运行时数据目录：
 - 媒体分块接收与本地落盘
 - 媒体归档下拉浏览、打开与定位
 - 终端日志过滤、设备作用域筛选与导出
+- LocalNode 控制台：设备、资产、Outbox、云同步配置可视化
+- LocalNode Outbox：`asset/result/log/stat` 自动补传 `vino_cloud`

@@ -193,6 +193,19 @@ public struct RemoteCaptureContext: Codable, Hashable {
 }
 
 public final class VinoAppState: ObservableObject {
+    private enum PersistentKey {
+        static let cloudBaseURL = "vino.cloud.baseURL"
+        static let localNodeBaseURL = "vino.localNode.baseURL"
+        static let cloudLoginEmail = "vino.cloud.loginEmail"
+    }
+
+    private static let defaultCloudBaseURL = "http://172.20.10.3:8787"
+    private static let defaultLocalNodeBaseURL = "http://127.0.0.1:49030"
+    private static let defaultCloudLoginEmail = "demo@vino.cc"
+    private static let defaultCloudLoginPassword = "demo123"
+    private static let cloudLoginPasswordAccount = "cloud-login-password"
+    private static let cloudLoginPasswordKeychain = KeychainStore(service: "cc.vino.iphone.login")
+
     @Published public var deviceName: String
     @Published public var captureMode: CaptureMode
     @Published public var focusMode: FocusControlMode
@@ -209,6 +222,23 @@ public final class VinoAppState: ObservableObject {
     @Published public var isRecording: Bool
     @Published public var isConnectedToDesktop: Bool
     @Published public var modelCatalog: CoreMLCatalog
+    @Published public var cloudBaseURL: String {
+        didSet { Self.savePersistentString(cloudBaseURL, forKey: PersistentKey.cloudBaseURL) }
+    }
+    @Published public var localNodeBaseURL: String {
+        didSet { Self.savePersistentString(localNodeBaseURL, forKey: PersistentKey.localNodeBaseURL) }
+    }
+    @Published public var cloudLoginEmail: String {
+        didSet { Self.savePersistentString(cloudLoginEmail, forKey: PersistentKey.cloudLoginEmail) }
+    }
+    @Published public var cloudLoginPassword: String {
+        didSet { Self.saveCloudLoginPassword(cloudLoginPassword) }
+    }
+    @Published public var cloudSession: AuthSession?
+    @Published public var cloudCatalog: CloudModelCatalog
+    @Published public var lastCloudSyncAt: String
+    @Published public var pendingUploadCount: Int
+    @Published public var lastCloudMessage: String
 
     public init() {
         self.deviceName = UIDevice.current.name
@@ -227,6 +257,49 @@ public final class VinoAppState: ObservableObject {
         self.isRecording = false
         self.isConnectedToDesktop = false
         self.modelCatalog = .sample
+        self.cloudBaseURL = Self.persistentString(forKey: PersistentKey.cloudBaseURL, defaultValue: Self.defaultCloudBaseURL)
+        self.localNodeBaseURL = Self.persistentString(forKey: PersistentKey.localNodeBaseURL, defaultValue: Self.defaultLocalNodeBaseURL)
+        self.cloudLoginEmail = Self.persistentString(forKey: PersistentKey.cloudLoginEmail, defaultValue: Self.defaultCloudLoginEmail)
+        self.cloudLoginPassword = Self.defaultCloudLoginPassword
+        self.cloudSession = nil
+        self.cloudCatalog = CloudModelCatalog()
+        self.lastCloudSyncAt = ""
+        self.pendingUploadCount = 0
+        self.lastCloudMessage = "未登录"
+        restoreCloudLoginPassword()
+    }
+
+    private static func persistentString(forKey key: String, defaultValue: String) -> String {
+        UserDefaults.standard.string(forKey: key) ?? defaultValue
+    }
+
+    private static func savePersistentString(_ value: String, forKey key: String) {
+        UserDefaults.standard.set(value, forKey: key)
+    }
+
+    private static func saveCloudLoginPassword(_ password: String) {
+        Task {
+            try? await cloudLoginPasswordKeychain.save(Data(password.utf8), account: cloudLoginPasswordAccount)
+        }
+    }
+
+    private func restoreCloudLoginPassword() {
+        Task { [weak self] in
+            let data: Data?
+            do {
+                data = try await Self.cloudLoginPasswordKeychain.load(account: Self.cloudLoginPasswordAccount)
+            } catch {
+                data = nil
+            }
+
+            guard let data, let password = String(data: data, encoding: .utf8) else {
+                return
+            }
+
+            await MainActor.run {
+                self?.cloudLoginPassword = password
+            }
+        }
     }
 
     public var activeModelIDs: [String] {
@@ -325,6 +398,55 @@ public final class VinoAppState: ObservableObject {
             selectedModelID = nil
         }
         lastStatusMessage = isEnabled ? "模型已启用 · \(modelID)" : "模型已禁用 · \(modelID)"
+    }
+
+    public func updateCloudSession(_ session: AuthSession?) {
+        cloudSession = session
+        if let session {
+            cloudBaseURL = session.cloudBaseURL
+            cloudLoginEmail = session.user.email
+            lastCloudMessage = "已登录 · \(session.user.organizationName)"
+        } else {
+            lastCloudMessage = "未登录"
+        }
+    }
+
+    public func applyCloudCatalog(_ catalog: CloudModelCatalog) {
+        cloudCatalog = catalog
+        lastCloudSyncAt = catalog.syncedAt ?? ISO8601DateFormatter().string(from: Date())
+        lastCloudMessage = catalog.models.isEmpty ? "当前账号暂无可下载模型" : "模型清单已同步"
+    }
+
+    public func updateModelLease(
+        modelID: String,
+        leaseExpiresAt: String?,
+        policyFlags: [String],
+        licenseID: String? = nil,
+        deviceBindingID: String? = nil
+    ) {
+        guard let index = modelCatalog.models.firstIndex(where: { $0.id == modelID }) else {
+            return
+        }
+
+        modelCatalog.models[index].leaseExpiresAt = leaseExpiresAt
+        modelCatalog.models[index].policyFlags = policyFlags
+        if let licenseID {
+            modelCatalog.models[index].licenseID = licenseID
+        }
+        if let deviceBindingID {
+            modelCatalog.models[index].deviceBindingID = deviceBindingID
+        }
+    }
+
+    public var cloudSessionSummary: String {
+        guard let cloudSession else {
+            return "未登录"
+        }
+        return "\(cloudSession.user.organizationName) · \(cloudSession.user.displayName)"
+    }
+
+    public var uploadBufferSummary: String {
+        pendingUploadCount == 0 ? "缓冲为空" : "待补传 \(pendingUploadCount) 条"
     }
 }
 

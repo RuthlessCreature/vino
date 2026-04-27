@@ -10,6 +10,7 @@ public struct VinoPhoneShellView: View {
     @StateObject private var ipMonitor = IPAddressMonitor()
     @StateObject private var controlPlane = ControlPlaneCoordinator()
     @StateObject private var inferenceRuntime = InferenceRuntime()
+    @StateObject private var cloudCoordinator = CloudControlCoordinator()
     @StateObject private var volumeButtonMonitor = VolumeButtonMonitor()
     @State private var previewMirrorRelay = PreviewFrameRelay()
     @State private var isTopGridVisible = false
@@ -30,6 +31,7 @@ public struct VinoPhoneShellView: View {
                     cameraController: cameraController,
                     ipMonitor: ipMonitor,
                     controlPlane: controlPlane,
+                    cloudCoordinator: cloudCoordinator,
                     inferenceRuntime: inferenceRuntime,
                     volumeButtonMonitor: volumeButtonMonitor,
                     previewMirrorRelay: previewMirrorRelay,
@@ -68,7 +70,10 @@ public struct VinoPhoneShellView: View {
             CameraPreviewView(session: cameraController.session)
                 .ignoresSafeArea()
 
-            InferenceResultsOverlayView(detections: inferenceRuntime.latestDetections)
+            InferenceResultsOverlayView(
+                detections: inferenceRuntime.latestDetections,
+                imageSize: currentInferenceImageSize
+            )
                 .ignoresSafeArea()
 
             LinearGradient(
@@ -81,18 +86,26 @@ public struct VinoPhoneShellView: View {
 
             CameraOverlayView(
                 appState: appState,
-                cameraController: cameraController,
-                ipAddresses: ipMonitor.addresses,
-                controlPlane: controlPlane,
-                isTopGridVisible: $isTopGridVisible,
-                isControlDeckVisible: $isControlDeckVisible
-            )
+                    cameraController: cameraController,
+                    ipAddresses: ipMonitor.addresses,
+                    controlPlane: controlPlane,
+                    cloudCoordinator: cloudCoordinator,
+                    isTopGridVisible: $isTopGridVisible,
+                    isControlDeckVisible: $isControlDeckVisible
+                )
 
             HiddenSystemVolumeCaptureView(monitor: volumeButtonMonitor)
                 .frame(width: 1, height: 1)
                 .opacity(0.01)
                 .allowsHitTesting(false)
         }
+    }
+
+    private var currentInferenceImageSize: CGSize? {
+        guard let report = inferenceRuntime.latestReport else {
+            return nil
+        }
+        return CGSize(width: report.imageWidth, height: report.imageHeight)
     }
 
     private func syncStatus() {
@@ -169,6 +182,7 @@ private struct VinoRuntimeLifecycleModifier: ViewModifier {
     let cameraController: CameraSessionController
     let ipMonitor: IPAddressMonitor
     let controlPlane: ControlPlaneCoordinator
+    let cloudCoordinator: CloudControlCoordinator
     let inferenceRuntime: InferenceRuntime
     let volumeButtonMonitor: VolumeButtonMonitor
     let previewMirrorRelay: PreviewFrameRelay
@@ -204,9 +218,18 @@ private struct VinoRuntimeLifecycleModifier: ViewModifier {
                 }
                 inferenceRuntime.onReportPublished = { report in
                     controlPlane.publishInferenceReport(report)
+                    Task {
+                        await cloudCoordinator.handleInferenceReport(report, context: appState.activeContext)
+                    }
                 }
                 inferenceRuntime.setEnabled(appState.inferenceEnabled)
                 inferenceRuntime.refreshModels(from: appState.modelCatalog)
+                controlPlane.mediaCaptureMirror = { url, category in
+                    Task {
+                        await cloudCoordinator.handleCapturedMedia(url: url, category: category, context: appState.activeContext)
+                    }
+                }
+                cloudCoordinator.start(appState: appState, inferenceRuntime: inferenceRuntime)
                 controlPlane.start(
                     appState: appState,
                     cameraController: cameraController,
@@ -283,6 +306,24 @@ private struct VinoRuntimeStateObserverModifier: ViewModifier {
             .onChange(of: appState.modelCatalog) { _, catalog in
                 inferenceRuntime.refreshModels(from: catalog)
                 controlPlane.broadcastCapabilities()
+                onSyncStatus()
+            }
+            .onChange(of: inferenceRuntime.activeModelNames) { _, names in
+                guard appState.inferenceEnabled else { return }
+                if names.isEmpty {
+                    if let error = inferenceRuntime.lastErrorMessage, !error.isEmpty {
+                        appState.lastStatusMessage = "推理不可用 · \(error)"
+                    } else {
+                        appState.lastStatusMessage = "推理不可用 · 没有激活模型"
+                    }
+                } else {
+                    appState.lastStatusMessage = "推理已就绪 · \(names.joined(separator: ", "))"
+                }
+                onSyncStatus()
+            }
+            .onChange(of: inferenceRuntime.lastErrorMessage) { _, message in
+                guard appState.inferenceEnabled, let message, !message.isEmpty else { return }
+                appState.lastStatusMessage = "推理不可用 · \(message)"
                 onSyncStatus()
             }
             .onChange(of: appState.persistMediaEnabled) { _, _ in

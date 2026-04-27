@@ -1,0 +1,831 @@
+{
+  "users": [
+    {
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "password": "demo123",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin"
+    },
+    {
+      "userId": "user-admin-001",
+      "email": "admin",
+      "password": "meiyoumima",
+      "displayName": "Cloud Admin",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin"
+    }
+  ],
+  "models": [
+    {
+      "id": "yolov8n-1bdcf14d",
+      "name": "yolov8n",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/yolov8n.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-yolov8n-703bd5b25243",
+      "sourcePath": "models/yolov8n.mlpackage",
+      "fileName": "yolov8n.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "demo",
+        "coreml",
+        "industrial",
+        "imported"
+      ],
+      "isEncrypted": true
+    },
+    {
+      "id": "best-3d3ac3df",
+      "name": "best",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/best.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-best-c6292f22c635",
+      "sourcePath": "models/best.mlpackage",
+      "fileName": "best.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "imported",
+        "coreml"
+      ],
+      "isEncrypted": true
+    },
+    {
+      "id": "best-license-plate-87cbf43a",
+      "name": "best_license_plate",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/best_license_plate.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-best-license-plate-500fb10baa9b",
+      "sourcePath": "models/best_license_plate.mlpackage",
+      "fileName": "best_license_plate.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "imported",
+        "coreml"
+      ],
+      "isEncrypted": true
+    },
+    {
+      "id": "best-plane-d5f0452a",
+      "name": "best_plane",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/best_plane.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-best-plane-fef5c58cad0f",
+      "sourcePath": "models/best_plane.mlpackage",
+      "fileName": "best_plane.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "imported",
+        "coreml"
+      ],
+      "isEncrypted": true
+    },
+    {
+      "id": "best-weld-d2e272e7",
+      "name": "best_weld",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/best_weld.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-best-weld-89e8afc9afd0",
+      "sourcePath": "models/best_weld.mlpackage",
+      "fileName": "best_weld.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "imported",
+        "coreml"
+      ],
+      "isEncrypted": true
+    },
+    {
+      "id": "test-pcb-defect-0a1fe2fd",
+      "name": "test_pcb_defect",
+      "version": "1.0.0",
+      "summary": "自动发现的 CoreML 模型：models/test_pcb_defect.mlpackage",
+      "organizationId": "org-demo-001",
+      "modelBuildId": "build-test-pcb-defect-63501067f9c9",
+      "sourcePath": "models/test_pcb_defect.mlpackage",
+      "fileName": "test_pcb_defect.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "supportedPlatforms": [
+        "ios"
+      ],
+      "tags": [
+        "imported",
+        "coreml"
+      ],
+      "isEncrypted": true
+    }
+  ],
+  "entitlements": [
+    {
+      "entitlementId": "ent-14f33aaaba27",
+      "organizationId": "org-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "assignedToType": "user",
+      "assignedToId": "user-demo-001",
+      "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+      "renewalMode": "perpetual",
+      "renewalEndsAt": null,
+      "leaseDays": 14,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "deviceBindingRequired": true,
+      "isActive": true,
+      "createdAt": "2026-04-27T09:07:48.854Z",
+      "updatedAt": "2026-04-27T09:07:48.854Z"
+    },
+    {
+      "entitlementId": "ent-cb314abf09da",
+      "organizationId": "org-demo-001",
+      "modelId": "best-weld-d2e272e7",
+      "assignedToType": "user",
+      "assignedToId": "user-demo-001",
+      "licenseId": "lic-best-weld-d2e272e7-c5fb91e7e3c9",
+      "renewalMode": "perpetual",
+      "renewalEndsAt": null,
+      "leaseDays": 14,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "deviceBindingRequired": true,
+      "isActive": true,
+      "createdAt": "2026-04-27T09:00:28.081Z",
+      "updatedAt": "2026-04-27T09:00:28.081Z"
+    },
+    {
+      "entitlementId": "ent-b6209e101510",
+      "organizationId": "org-demo-001",
+      "modelId": "best-3d3ac3df",
+      "assignedToType": "user",
+      "assignedToId": "user-demo-001",
+      "licenseId": "lic-best-3d3ac3df-c5fb91e7e3c9",
+      "renewalMode": "perpetual",
+      "renewalEndsAt": null,
+      "leaseDays": 14,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "deviceBindingRequired": true,
+      "isActive": true,
+      "createdAt": "2026-04-27T05:09:39.885Z",
+      "updatedAt": "2026-04-27T05:09:39.885Z"
+    }
+  ],
+  "sessions": [
+    {
+      "accessToken": "8e79c735f9f14740a82f23164237c4a1",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-14T06:49:35.375Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "sim-device",
+      "deviceName": "Simulator",
+      "platform": "iOS"
+    },
+    {
+      "accessToken": "7da75c3c39bb42c183bed516cf517c77",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-14T06:53:32.642Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "unknown-device",
+      "deviceName": "unknown-device",
+      "platform": "unknown"
+    },
+    {
+      "accessToken": "df2b87d7b9134824ae0af682999cceff",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-14T06:57:37.304Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "sim-device-001",
+      "deviceName": "unknown-device",
+      "platform": "unknown"
+    },
+    {
+      "accessToken": "06f3ffc3c7354cea8d79c1550fb163e1",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-14T07:41:25.749Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "sim-device-encrypted",
+      "deviceName": "unknown-device",
+      "platform": "unknown"
+    },
+    {
+      "accessToken": "11d3ecec7f654822bda69a10a76e7d09",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-14T08:06:45.313Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "iphone-lab",
+      "deviceName": "unknown-device",
+      "platform": "unknown"
+    },
+    {
+      "accessToken": "550e613de36f45b78db43671cb079c75",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-28T09:11:27.098Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "cli-test",
+      "deviceName": "CLI Test",
+      "platform": "macOS"
+    },
+    {
+      "accessToken": "8ea965fb53b44302a3685cb8ee1cadfa",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-04-28T09:12:27.073Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "deviceId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a",
+      "deviceName": "iPhone",
+      "platform": "iOS"
+    },
+    {
+      "accessToken": "07cc8bb5fb4149f3b432bdde5c3602d3",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-05-04T05:27:11.298Z",
+      "userId": "user-admin-001",
+      "email": "admin",
+      "displayName": "Cloud Admin",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin",
+      "deviceId": "cloud-console-test",
+      "deviceName": "Cloud Console Test",
+      "platform": "web"
+    },
+    {
+      "accessToken": "da1c0cbe06404955a5754f5a99268289",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-05-04T05:30:23.281Z",
+      "userId": "user-admin-001",
+      "email": "admin",
+      "displayName": "Cloud Admin",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin",
+      "deviceId": "cloud-console-cleanup-check",
+      "deviceName": "Cloud Console Cleanup Check",
+      "platform": "web"
+    },
+    {
+      "accessToken": "950332411c654263b437d79f4b7443e4",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-05-04T09:00:20.591Z",
+      "userId": "user-admin-001",
+      "email": "admin",
+      "displayName": "Cloud Admin",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin",
+      "deviceId": "cloud-console",
+      "deviceName": "Cloud Console",
+      "platform": "web"
+    },
+    {
+      "accessToken": "68c6dfa9105c4b1b8303ed94c0053d0d",
+      "tokenType": "Bearer",
+      "expiresAt": "2026-05-04T09:08:30.614Z",
+      "userId": "user-demo-001",
+      "email": "demo@vino.cc",
+      "displayName": "Demo Operator",
+      "organizationId": "org-demo-001",
+      "organizationName": "Vino Demo Factory",
+      "role": "admin",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "deviceName": "iPhone",
+      "platform": "iOS"
+    }
+  ],
+  "tickets": [
+    {
+      "ticketId": "2dc8c5dd151b4976bbb5267ae8da6493",
+      "modelId": "yolov8n-1bdcf14d",
+      "organizationId": "org-demo-001",
+      "deviceId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a",
+      "expiresAt": "2026-04-21T09:27:28.905Z",
+      "fileName": "yolov8n.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "3080e49cb8c7b1d5372083b7afa3e7fbbe91901a329a91aed886a5caba7b9596",
+      "byteCount": 6486005,
+      "modelBuildId": "build-yolov8n-703bd5b25243",
+      "isEncrypted": true,
+      "ticketSecret": "6725dbf9fea88db04877da7b8071dd4bbcd46e91b082b602db29bb1ee6e17515",
+      "license": {
+        "licenseId": "lic-yolov8n-1bdcf14d",
+        "leaseExpiresAt": "2026-05-05T09:12:27.113Z",
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a"
+      }
+    },
+    {
+      "ticketId": "b661d46f217345e49488efabb3847fc6",
+      "modelId": "yolov8n-1bdcf14d",
+      "organizationId": "org-demo-001",
+      "deviceId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a",
+      "expiresAt": "2026-04-21T09:27:36.452Z",
+      "fileName": "yolov8n.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "3080e49cb8c7b1d5372083b7afa3e7fbbe91901a329a91aed886a5caba7b9596",
+      "byteCount": 6486005,
+      "modelBuildId": "build-yolov8n-703bd5b25243",
+      "isEncrypted": true,
+      "ticketSecret": "80ef594b7791b229d24a94d632efec82b547e13bc79ba34e90536fceefb7283f",
+      "license": {
+        "licenseId": "lic-yolov8n-1bdcf14d",
+        "leaseExpiresAt": "2026-05-05T09:12:27.113Z",
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a"
+      }
+    },
+    {
+      "ticketId": "2ac770baf2e74e6daad46f95c322b727",
+      "modelId": "yolov8n-1bdcf14d",
+      "organizationId": "org-demo-001",
+      "deviceId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a",
+      "expiresAt": "2026-04-21T09:27:46.113Z",
+      "fileName": "yolov8n.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "3080e49cb8c7b1d5372083b7afa3e7fbbe91901a329a91aed886a5caba7b9596",
+      "byteCount": 6486005,
+      "modelBuildId": "build-yolov8n-703bd5b25243",
+      "isEncrypted": true,
+      "ticketSecret": "892a80d57ec6dacd4f1f4a6c3335360aff89de520c48c7986028e9253a4f8464",
+      "license": {
+        "licenseId": "lic-yolov8n-1bdcf14d",
+        "leaseExpiresAt": "2026-05-05T09:12:41.557Z",
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "c1b130b8-049c-4001-8bff-774cfa2a1b8a"
+      }
+    },
+    {
+      "ticketId": "09cd7f384dda49a39bbedffb0ed6971c",
+      "modelId": "yolov8n-1bdcf14d",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T04:05:55.206Z",
+      "fileName": "yolov8n.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "3080e49cb8c7b1d5372083b7afa3e7fbbe91901a329a91aed886a5caba7b9596",
+      "byteCount": 6486005,
+      "modelBuildId": "build-yolov8n-703bd5b25243",
+      "isEncrypted": true,
+      "ticketSecret": "2afe8df4093e7d5a039da8127b0d5a4aa5ac3d0e2beb925d3874b686136b90d7",
+      "license": {
+        "licenseId": "lic-yolov8n-1bdcf14d",
+        "leaseExpiresAt": "2026-05-11T03:50:42.777Z",
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1"
+      }
+    },
+    {
+      "ticketId": "4e23f0c00f954db5959cc2d027ba6b01",
+      "entitlementId": "ent-b6209e101510",
+      "userId": "user-demo-001",
+      "modelId": "best-3d3ac3df",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T05:24:48.987Z",
+      "fileName": "best.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "34d249e1b00c606b9efedd4486182e612ab0c0b15cd43ec072ffde2ee6e03dc1",
+      "byteCount": 52070302,
+      "modelBuildId": "build-best-c6292f22c635",
+      "isEncrypted": true,
+      "ticketSecret": "4a6ccfea2a6e6327f1919e63749acee26b37093d6905530d57be3cb14bd6c46e",
+      "license": {
+        "licenseId": "lic-best-3d3ac3df-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "706d6fbfb3e34c098ba0f76236edede5",
+      "entitlementId": "ent-b6209e101510",
+      "userId": "user-demo-001",
+      "modelId": "best-3d3ac3df",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T05:29:41.534Z",
+      "fileName": "best.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "34d249e1b00c606b9efedd4486182e612ab0c0b15cd43ec072ffde2ee6e03dc1",
+      "byteCount": 52070302,
+      "modelBuildId": "build-best-c6292f22c635",
+      "isEncrypted": true,
+      "ticketSecret": "fc8f7c5d06372483538afa499f7d9a95d2bf71d7ae1db139c7063b852504e8cf",
+      "license": {
+        "licenseId": "lic-best-3d3ac3df-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "caae95cf6c86415ab3eacfb911545fce",
+      "entitlementId": "ent-14f33aaaba27",
+      "userId": "user-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T09:23:33.735Z",
+      "fileName": "test_pcb_defect.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "df6820837fee9bae1ddcef9cb8709a8365638f738537a140b9371b408b32ec18",
+      "byteCount": 54683065,
+      "modelBuildId": "build-test-pcb-defect-6b5af6bac023",
+      "isEncrypted": true,
+      "ticketSecret": "441a593125c725fe2b315c8625dbd0942c24b94babec86e5f4f65a9041576b89",
+      "license": {
+        "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "8706bc648dc74845a093ac1a6c097d67",
+      "entitlementId": "ent-cb314abf09da",
+      "userId": "user-demo-001",
+      "modelId": "best-weld-d2e272e7",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T09:27:52.407Z",
+      "fileName": "best_weld.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "4fc4163893e0a47192b7a01ea5e7195d2644c37a502ebb8d1a7fab79c6fa9cc9",
+      "byteCount": 22429311,
+      "modelBuildId": "build-best-weld-486394e9c046",
+      "isEncrypted": true,
+      "ticketSecret": "78c59233e5ee6d19648ea43072a3357ea7ef96e28a7825012ede9a2344709eca",
+      "license": {
+        "licenseId": "lic-best-weld-d2e272e7-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "602df401355e431c84e1ed17c503306a",
+      "entitlementId": "ent-14f33aaaba27",
+      "userId": "user-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T09:46:22.570Z",
+      "fileName": "test_pcb_defect.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "0115d68a4d886c8b81fe4602331b28589b55a78e944576ccb96b9e5fdcfacb2a",
+      "byteCount": 54683065,
+      "modelBuildId": "build-test-pcb-defect-63501067f9c9",
+      "isEncrypted": true,
+      "ticketSecret": "a082881f3ac23a779b850b122dc64b358680183a163488c1b3be4f07c9568bcc",
+      "license": {
+        "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "b320fb94d77142b4bca0d878e455bf32",
+      "entitlementId": "ent-cb314abf09da",
+      "userId": "user-demo-001",
+      "modelId": "best-weld-d2e272e7",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T09:47:55.819Z",
+      "fileName": "best_weld.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "79988f83bb784e41f3d09eceebb25b48ed287c96a74ec43b6587a56239cd5767",
+      "byteCount": 22434084,
+      "modelBuildId": "build-best-weld-89e8afc9afd0",
+      "isEncrypted": true,
+      "ticketSecret": "b4f9167f0b877f3632eca11830ee93ff87edd959bde04c2883332de1c48a9dbd",
+      "license": {
+        "licenseId": "lic-best-weld-d2e272e7-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "5af2074fb5ce407fa100cadbdaf60135",
+      "entitlementId": "ent-b6209e101510",
+      "userId": "user-demo-001",
+      "modelId": "best-3d3ac3df",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T10:05:40.001Z",
+      "fileName": "best.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "34d249e1b00c606b9efedd4486182e612ab0c0b15cd43ec072ffde2ee6e03dc1",
+      "byteCount": 52070302,
+      "modelBuildId": "build-best-c6292f22c635",
+      "isEncrypted": true,
+      "ticketSecret": "5ea450665e70b338ffbaf139ec13a5743bec15f79607b28e82bc230bc8ee1a6b",
+      "license": {
+        "licenseId": "lic-best-3d3ac3df-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "ff74966e85074130a328037116ae87af",
+      "entitlementId": "ent-14f33aaaba27",
+      "userId": "user-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T10:23:57.196Z",
+      "fileName": "test_pcb_defect.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "0115d68a4d886c8b81fe4602331b28589b55a78e944576ccb96b9e5fdcfacb2a",
+      "byteCount": 54683065,
+      "modelBuildId": "build-test-pcb-defect-63501067f9c9",
+      "isEncrypted": true,
+      "ticketSecret": "a6e19419d13c78ef6f473334d85f7e5a6d5fa54f94ab6226654bf0d5c4b85cc3",
+      "license": {
+        "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    },
+    {
+      "ticketId": "243e76c2b4c44625af946cebe75c9ff4",
+      "entitlementId": "ent-14f33aaaba27",
+      "userId": "user-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "organizationId": "org-demo-001",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "expiresAt": "2026-04-27T10:24:45.776Z",
+      "fileName": "test_pcb_defect.mlpackage",
+      "sourceFormat": "mlpackage",
+      "transportFormat": "bundle-archive",
+      "sha256": "0115d68a4d886c8b81fe4602331b28589b55a78e944576ccb96b9e5fdcfacb2a",
+      "byteCount": 54683065,
+      "modelBuildId": "build-test-pcb-defect-63501067f9c9",
+      "isEncrypted": true,
+      "ticketSecret": "1ba25fb1996542e25a1e3fe5fdef1c0a7848d17800fbc02246e43805028fc477",
+      "license": {
+        "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+        "leaseExpiresAt": null,
+        "policyFlags": [
+          "offline",
+          "device-bound"
+        ],
+        "deviceBindingRequired": true,
+        "deviceBindingId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+        "renewalMode": "perpetual",
+        "renewalEndsAt": null
+      }
+    }
+  ],
+  "leases": [
+    {
+      "entitlementId": "ent-b6209e101510",
+      "organizationId": "org-demo-001",
+      "userId": "user-demo-001",
+      "modelId": "best-3d3ac3df",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "licenseId": "lic-best-3d3ac3df-c5fb91e7e3c9",
+      "leaseExpiresAt": null,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "renewedAt": "2026-04-27T09:50:40.001Z"
+    },
+    {
+      "entitlementId": "ent-14f33aaaba27",
+      "organizationId": "org-demo-001",
+      "userId": "user-demo-001",
+      "modelId": "test-pcb-defect-0a1fe2fd",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "licenseId": "lic-test-pcb-defect-0a1fe2fd-c5fb91e7e3c9",
+      "leaseExpiresAt": null,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "renewedAt": "2026-04-27T10:09:45.776Z"
+    },
+    {
+      "entitlementId": "ent-cb314abf09da",
+      "organizationId": "org-demo-001",
+      "userId": "user-demo-001",
+      "modelId": "best-weld-d2e272e7",
+      "deviceId": "977285c6-6a8b-42c1-9aff-356e1d8507c1",
+      "licenseId": "lic-best-weld-d2e272e7-c5fb91e7e3c9",
+      "leaseExpiresAt": null,
+      "policyFlags": [
+        "offline",
+        "device-bound"
+      ],
+      "renewedAt": "2026-04-27T09:32:55.819Z"
+    }
+  ],
+  "ingests": {
+    "assets": [
+      {
+        "assetId": "asset-2b63e64dee18e089",
+        "deviceId": "sim-device-001",
+        "deviceName": "",
+        "fileName": "mvp1775546677.txt",
+        "category": "binary",
+        "byteCount": 24,
+        "capturedAt": "2026-04-07T07:00:00Z",
+        "productUUID": "mvp1775546677",
+        "pointIndex": 1,
+        "jobId": "mvp1775546677-asset",
+        "storedPath": "/Users/cengcheng/Documents/GitHub/vino/vino_cloud/data/assets/asset-2b63e64dee18e089.txt",
+        "createdAt": "2026-04-07T07:24:39.202Z"
+      },
+      {
+        "assetId": "asset-d87cdbf810ba415b",
+        "deviceId": "demo-local-node",
+        "deviceName": "",
+        "fileName": "vino_Desktop_icon_1024.png",
+        "category": "image",
+        "byteCount": 168937,
+        "capturedAt": "2026-04-27T08:14:03Z",
+        "productUUID": "demo-local-preview-20260427",
+        "pointIndex": 1,
+        "jobId": "",
+        "storedPath": "/Users/cengcheng/Documents/GitHub/vino/vino_cloud/data/assets/asset-d87cdbf810ba415b.png",
+        "createdAt": "2026-04-27T08:14:04.805Z"
+      }
+    ],
+    "results": [
+      {
+        "resultId": "mvp1775546677-result",
+        "deviceId": "sim-device-001",
+        "deviceName": "",
+        "resultType": "inference_frame",
+        "capturedAt": "2026-04-07T07:00:01Z",
+        "productUUID": "mvp1775546677",
+        "pointIndex": 2,
+        "jobId": "mvp1775546677-job",
+        "payload": {
+          "detections": [
+            {
+              "confidence": 0.98,
+              "label": "cap"
+            }
+          ],
+          "frameId": "mvp1775546677-frame"
+        },
+        "createdAt": "2026-04-07T07:24:39.205Z"
+      },
+      {
+        "resultId": "auto1775546709-result",
+        "deviceId": "sim-device-002",
+        "deviceName": "",
+        "resultType": "auto_test",
+        "capturedAt": "2026-04-07T07:00:02Z",
+        "productUUID": "auto1775546709",
+        "pointIndex": 9,
+        "jobId": "auto1775546709-job",
+        "payload": {
+          "ok": true
+        },
+        "createdAt": "2026-04-07T07:25:12.675Z"
+      }
+    ],
+    "logs": [],
+    "stats": []
+  }
+}

@@ -23,6 +23,15 @@
 		B1000000000000000000000E /* VinoProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000010 /* VinoProtocol.swift */; };
 		B1000000000000000000000F /* CameraOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000011 /* CameraOverlayView.swift */; };
 		B10000000000000000000010 /* InferenceResultsOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000012 /* InferenceResultsOverlayView.swift */; };
+		B10000000000000000000011 /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000013 /* AuthModels.swift */; };
+		B10000000000000000000012 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000014 /* KeychainStore.swift */; };
+		B10000000000000000000013 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000015 /* AuthSessionStore.swift */; };
+		B10000000000000000000014 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000016 /* AuthService.swift */; };
+		B10000000000000000000015 /* CloudModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000017 /* CloudModelCatalog.swift */; };
+		B10000000000000000000016 /* ModelLicenseVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000018 /* ModelLicenseVerifier.swift */; };
+		B10000000000000000000017 /* AssetUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000019 /* AssetUploadService.swift */; };
+		B10000000000000000000018 /* CloudControlCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* CloudControlCoordinator.swift */; };
+		B10000000000000000000019 /* models in Resources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001B /* models */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +53,15 @@
 		C10000000000000000000010 /* VinoProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinoProtocol.swift; sourceTree = "<group>"; };
 		C10000000000000000000011 /* CameraOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraOverlayView.swift; sourceTree = "<group>"; };
 		C10000000000000000000012 /* InferenceResultsOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceResultsOverlayView.swift; sourceTree = "<group>"; };
+		C10000000000000000000013 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
+		C10000000000000000000014 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		C10000000000000000000015 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionStore.swift; sourceTree = "<group>"; };
+		C10000000000000000000016 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		C10000000000000000000017 /* CloudModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudModelCatalog.swift; sourceTree = "<group>"; };
+		C10000000000000000000018 /* ModelLicenseVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLicenseVerifier.swift; sourceTree = "<group>"; };
+		C10000000000000000000019 /* AssetUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetUploadService.swift; sourceTree = "<group>"; };
+		C1000000000000000000001A /* CloudControlCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudControlCoordinator.swift; sourceTree = "<group>"; };
+		C1000000000000000000001B /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = models; path = ../models; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +98,7 @@
 				C10000000000000000000002 /* VinoPhoneApp.swift */,
 				C10000000000000000000003 /* Info.plist */,
 				C10000000000000000000004 /* Assets.xcassets */,
+				C1000000000000000000001B /* models */,
 			);
 			path = AppHost;
 			sourceTree = "<group>";
@@ -88,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				D10000000000000000000005 /* App */,
+				D1000000000000000000000B /* Auth */,
 				D10000000000000000000006 /* Camera */,
 				D10000000000000000000007 /* Inference */,
 				D10000000000000000000008 /* Models */,
@@ -103,6 +123,17 @@
 				C10000000000000000000005 /* VinoPhoneShellView.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000B /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000013 /* AuthModels.swift */,
+				C10000000000000000000014 /* KeychainStore.swift */,
+				C10000000000000000000015 /* AuthSessionStore.swift */,
+				C10000000000000000000016 /* AuthService.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 		D10000000000000000000006 /* Camera */ = {
@@ -126,7 +157,9 @@
 			isa = PBXGroup;
 			children = (
 				C10000000000000000000009 /* CoreMLCatalog.swift */,
+				C10000000000000000000017 /* CloudModelCatalog.swift */,
 				C1000000000000000000000A /* InferenceModels.swift */,
+				C10000000000000000000018 /* ModelLicenseVerifier.swift */,
 				C1000000000000000000000B /* ModelFileStore.swift */,
 				C1000000000000000000000C /* VinoAppState.swift */,
 				C1000000000000000000000D /* VinoTheme.swift */,
@@ -137,6 +170,8 @@
 		D10000000000000000000009 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				C10000000000000000000019 /* AssetUploadService.swift */,
+				C1000000000000000000001A /* CloudControlCoordinator.swift */,
 				C1000000000000000000000E /* ControlPlaneCoordinator.swift */,
 				C1000000000000000000000F /* IPAddressMonitor.swift */,
 				C10000000000000000000010 /* VinoProtocol.swift */,
@@ -212,6 +247,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000002 /* Assets.xcassets in Resources */,
+				B10000000000000000000019 /* models in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -237,6 +273,14 @@
 				B1000000000000000000000E /* VinoProtocol.swift in Sources */,
 				B1000000000000000000000F /* CameraOverlayView.swift in Sources */,
 				B10000000000000000000010 /* InferenceResultsOverlayView.swift in Sources */,
+				B10000000000000000000011 /* AuthModels.swift in Sources */,
+				B10000000000000000000012 /* KeychainStore.swift in Sources */,
+				B10000000000000000000013 /* AuthSessionStore.swift in Sources */,
+				B10000000000000000000014 /* AuthService.swift in Sources */,
+				B10000000000000000000015 /* CloudModelCatalog.swift in Sources */,
+				B10000000000000000000016 /* ModelLicenseVerifier.swift in Sources */,
+				B10000000000000000000017 /* AssetUploadService.swift in Sources */,
+				B10000000000000000000018 /* CloudControlCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

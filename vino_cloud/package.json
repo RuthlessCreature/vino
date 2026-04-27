@@ -1,0 +1,9 @@
+{
+  "name": "vino-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "vino cloud auth, model catalog, lease and ingest service",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
