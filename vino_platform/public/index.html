@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vino Platform</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <main class="shell">
+    <section id="loginView" class="login-view">
+      <form id="loginForm" class="login-panel">
+        <div>
+          <div class="eyebrow">vino Platform</div>
+          <h1>平台后台</h1>
+        </div>
+        <label>
+          <span>账号</span>
+          <input id="loginAccountInput" autocomplete="username" value="admin" required />
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="loginPasswordInput" type="password" autocomplete="current-password" value="meiyoumima" required />
+        </label>
+        <button class="btn primary" type="submit">登录</button>
+        <div id="loginErrorLabel" class="error hidden"></div>
+      </form>
+    </section>
+
+    <section id="appView" class="app-view hidden">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">vino Platform</div>
+          <h1>模型交易与授权控制台</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="currentUserLabel" class="pill">未登录</span>
+          <span id="lastUpdatedLabel" class="pill">等待加载</span>
+          <button id="refreshButton" class="btn" type="button">刷新</button>
+          <button id="logoutButton" class="btn danger" type="button">退出</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="后台模块">
+        <button class="tab active" data-tab="overview" type="button">总览</button>
+        <button class="tab" data-tab="market" type="button">模型商城</button>
+        <button class="tab" data-tab="developer" type="button">开发者</button>
+        <button class="tab" data-tab="commerce" type="button">交易授权</button>
+        <button class="tab" data-tab="catalog" type="button">模型商品</button>
+        <button class="tab" data-tab="terminal" type="button">终端数据</button>
+        <button class="tab" data-tab="service" type="button">服务定制</button>
+        <button class="tab" data-tab="finance" type="button">财务发票</button>
+        <button class="tab" data-tab="ops" type="button">运营系统</button>
+      </nav>
+
+      <section id="overviewTab" class="tab-panel active">
+        <section id="summaryGrid" class="summary-grid"></section>
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>最近订单</h2>
+              <span id="orderCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>订单</th>
+                    <th>组织</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>审计日志</h2>
+              <span id="auditCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>动作</th>
+                    <th>对象</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="marketTab" class="tab-panel">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>模型商城 / 试用 / 收藏 / 评价</h2>
+            <span id="marketCountLabel" class="muted">0</span>
+          </div>
+          <form id="marketSearchForm" class="form-grid">
+            <label>
+              <span>关键词</span>
+              <input id="marketQueryInput" placeholder="如 best / weld / pcb" />
+            </label>
+            <label>
+              <span>分类</span>
+              <select id="marketCategoryInput"></select>
+            </label>
+            <div class="form-actions span-2">
+              <button class="btn primary" type="submit">搜索</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>价格</th>
+                  <th>评分</th>
+                  <th>销量</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="marketTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="developerTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>开发者入驻</h2>
+              <span id="developerCountLabel" class="muted">0</span>
+            </div>
+            <form id="developerProfileForm" class="form-grid">
+              <label>
+                <span>展示名</span>
+                <input id="developerDisplayNameInput" value="Vino Model Lab" required />
+              </label>
+              <label>
+                <span>类型</span>
+                <select id="developerTypeInput">
+                  <option value="company">企业</option>
+                  <option value="team">团队</option>
+                  <option value="individual">个人</option>
+                </select>
+              </label>
+              <label class="checkline span-2">
+                <input id="developerAgreementInput" type="checkbox" checked />
+                <span>已签署入驻协议</span>
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">提交入驻</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>模型草稿 / 提审</h2>
+              <span class="muted">Developer</span>
+            </div>
+            <form id="developerModelForm" class="form-grid">
+              <label>
+                <span>模型名称</span>
+                <input id="developerModelNameInput" required />
+              </label>
+              <label>
+                <span>分类</span>
+                <select id="developerModelCategoryInput"></select>
+              </label>
+              <label class="span-2">
+                <span>摘要</span>
+                <input id="developerModelSummaryInput" />
+              </label>
+              <label class="span-2">
+                <span>标签，逗号分隔</span>
+                <input id="developerModelTagsInput" value="coreml,industrial" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存草稿</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>开发者列表</h2>
+              <span class="muted">Qualification</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>开发者</th>
+                    <th>类型</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="developersTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>审核队列</h2>
+              <span id="reviewCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>对象</th>
+                    <th>状态</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="reviewsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="commerceTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>创建订单</h2>
+              <span class="muted">P0</span>
+            </div>
+            <form id="orderForm" class="form-grid">
+              <label>
+                <span>采购组织</span>
+                <select id="orderBuyerOrganizationInput" required></select>
+              </label>
+              <label>
+                <span>模型 SKU</span>
+                <select id="orderSkuInput" required></select>
+              </label>
+              <label>
+                <span>数量</span>
+                <input id="orderQuantityInput" type="number" min="1" value="1" required />
+              </label>
+              <label>
+                <span>付款方式</span>
+                <select id="orderPaymentModeInput">
+                  <option value="offline_transfer">线下转账</option>
+                  <option value="manual">人工确认</option>
+                </select>
+              </label>
+              <label class="span-2">
+                <span>优惠券</span>
+                <select id="orderCouponInput"></select>
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">创建订单</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>授权分配</h2>
+              <span id="entitlementCountLabel" class="muted">0</span>
+            </div>
+            <form id="entitlementForm" class="form-grid">
+              <input id="entitlementIdInput" type="hidden" />
+              <label>
+                <span>模型</span>
+                <select id="entitlementModelInput" required></select>
+              </label>
+              <label>
+                <span>分配类型</span>
+                <select id="entitlementAssignedTypeInput">
+                  <option value="user">用户</option>
+                  <option value="organization">组织</option>
+                </select>
+              </label>
+              <label>
+                <span>分配对象</span>
+                <select id="entitlementAssignedToInput" required></select>
+              </label>
+              <label>
+                <span>授权模式</span>
+                <select id="entitlementRenewalModeInput">
+                  <option value="perpetual">永久</option>
+                  <option value="fixed">截止日期</option>
+                </select>
+              </label>
+              <label>
+                <span>截止时间</span>
+                <input id="entitlementRenewalEndsAtInput" type="datetime-local" />
+              </label>
+              <label>
+                <span>离线租约天数</span>
+                <input id="entitlementOfflineDaysInput" type="number" min="1" value="30" />
+              </label>
+              <label class="checkline span-2">
+                <input id="entitlementDeviceBindingInput" type="checkbox" checked />
+                <span>设备绑定</span>
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存授权</button>
+                <button id="clearEntitlementButton" class="btn" type="button">清空</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>授权清单</h2>
+            <span class="muted">Entitlement</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>对象</th>
+                  <th>模型</th>
+                  <th>模式</th>
+                  <th>截止</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="entitlementsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="catalogTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>用户管理</h2>
+              <span id="userCountLabel" class="muted">0</span>
+            </div>
+            <form id="userForm" class="form-grid">
+              <label>
+                <span>显示名</span>
+                <input id="userDisplayNameInput" required />
+              </label>
+              <label>
+                <span>账号</span>
+                <input id="userEmailInput" required />
+              </label>
+              <label>
+                <span>密码</span>
+                <input id="userPasswordInput" placeholder="默认 demo123" />
+              </label>
+              <label>
+                <span>角色</span>
+                <select id="userRoleInput">
+                  <option value="buyer_operator">采购操作员</option>
+                  <option value="buyer_admin">采购管理员</option>
+                  <option value="developer_admin">开发者</option>
+                  <option value="platform_ops">平台运营</option>
+                  <option value="reviewer">审核员</option>
+                  <option value="finance">财务</option>
+                  <option value="super_admin">超级管理员</option>
+                </select>
+              </label>
+              <label class="span-2">
+                <span>组织</span>
+                <select id="userOrganizationInput"></select>
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存用户</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>SKU 配置</h2>
+              <span id="skuCountLabel" class="muted">0</span>
+            </div>
+            <form id="skuForm" class="form-grid">
+              <label>
+                <span>模型</span>
+                <select id="skuModelInput" required></select>
+              </label>
+              <label>
+                <span>SKU 名称</span>
+                <input id="skuNameInput" value="Annual device-bound license" required />
+              </label>
+              <label>
+                <span>价格</span>
+                <input id="skuPriceInput" type="number" min="0" value="9800" required />
+              </label>
+              <label>
+                <span>授权类型</span>
+                <select id="skuLicenseTypeInput">
+                  <option value="subscription">年费</option>
+                  <option value="perpetual">永久</option>
+                  <option value="trial">试用</option>
+                  <option value="project">项目期</option>
+                </select>
+              </label>
+              <label>
+                <span>合同天数</span>
+                <input id="skuDurationInput" type="number" min="1" value="365" />
+              </label>
+              <label>
+                <span>最大设备</span>
+                <input id="skuMaxDevicesInput" type="number" min="1" value="3" />
+              </label>
+              <label class="span-2">
+                <span>离线租约天数</span>
+                <input id="skuOfflineDaysInput" type="number" min="1" value="30" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存 SKU</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>模型目录</h2>
+            <span id="modelCountLabel" class="muted">0</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>状态</th>
+                  <th>格式</th>
+                  <th>SKU</th>
+                  <th>授权数</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="modelsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="terminalTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>设备</h2>
+              <span id="deviceCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>设备</th>
+                    <th>组织</th>
+                    <th>平台</th>
+                    <th>最近在线</th>
+                  </tr>
+                </thead>
+                <tbody id="devicesTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>最近结果</h2>
+              <span id="resultCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>设备</th>
+                    <th>类型</th>
+                    <th>产品</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody id="resultsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>最近资产</h2>
+            <span id="assetCountLabel" class="muted">0</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>设备</th>
+                  <th>文件</th>
+                  <th>类别</th>
+                  <th>点位</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody id="assetsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="serviceTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>售后工单</h2>
+              <span id="supportCountLabel" class="muted">0</span>
+            </div>
+            <form id="supportForm" class="form-grid">
+              <label>
+                <span>标题</span>
+                <input id="supportTitleInput" required />
+              </label>
+              <label>
+                <span>分类</span>
+                <select id="supportCategoryInput">
+                  <option value="technical">技术问题</option>
+                  <option value="after_sale">售后</option>
+                  <option value="billing">账务</option>
+                </select>
+              </label>
+              <label>
+                <span>优先级</span>
+                <select id="supportPriorityInput">
+                  <option value="normal">普通</option>
+                  <option value="high">高</option>
+                  <option value="urgent">紧急</option>
+                </select>
+              </label>
+              <label>
+                <span>关联模型</span>
+                <select id="supportModelInput"></select>
+              </label>
+              <label class="span-2">
+                <span>问题描述</span>
+                <input id="supportBodyInput" required />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">提交工单</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>定制需求</h2>
+              <span id="customRequestCountLabel" class="muted">0</span>
+            </div>
+            <form id="customRequestForm" class="form-grid">
+              <label>
+                <span>需求标题</span>
+                <input id="customTitleInput" required />
+              </label>
+              <label>
+                <span>预算</span>
+                <input id="customBudgetInput" type="number" min="0" value="50000" />
+              </label>
+              <label>
+                <span>截止日期</span>
+                <input id="customDueInput" type="date" />
+              </label>
+              <label>
+                <span>币种</span>
+                <select id="customCurrencyInput">
+                  <option value="CNY">CNY</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+              <label class="span-2">
+                <span>场景描述</span>
+                <input id="customScenarioInput" required />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">发布需求</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>工单列表</h2>
+              <span class="muted">Support</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>工单</th>
+                    <th>分类</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="supportTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>定制列表</h2>
+              <span class="muted">Custom</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>需求</th>
+                    <th>预算</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="customRequestsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="financeTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>发票申请</h2>
+              <span id="invoiceCountLabel" class="muted">0</span>
+            </div>
+            <form id="invoiceForm" class="form-grid">
+              <label>
+                <span>订单</span>
+                <select id="invoiceOrderInput" required></select>
+              </label>
+              <label>
+                <span>发票类型</span>
+                <select id="invoiceTypeInput">
+                  <option value="vat_normal">增值税普通发票</option>
+                  <option value="vat_special">增值税专用发票</option>
+                </select>
+              </label>
+              <label>
+                <span>抬头</span>
+                <input id="invoiceTitleInput" required />
+              </label>
+              <label>
+                <span>税号</span>
+                <input id="invoiceTaxInput" />
+              </label>
+              <label class="span-2">
+                <span>接收邮箱</span>
+                <input id="invoiceEmailInput" type="email" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">提交发票</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>开发者提现</h2>
+              <span id="withdrawalCountLabel" class="muted">0</span>
+            </div>
+            <form id="withdrawalForm" class="form-grid">
+              <label>
+                <span>金额</span>
+                <input id="withdrawalAmountInput" type="number" min="1" />
+              </label>
+              <label>
+                <span>账户名</span>
+                <input id="withdrawalAccountNameInput" />
+              </label>
+              <label class="span-2">
+                <span>账户号</span>
+                <input id="withdrawalAccountNoInput" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">申请提现</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>发票列表</h2>
+              <span class="muted">Invoice</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>发票</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="invoicesTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>结算 / 提现</h2>
+              <span id="settlementCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>记录</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="financeTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="opsTab" class="tab-panel">
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>优惠券</h2>
+              <span id="couponCountLabel" class="muted">0</span>
+            </div>
+            <form id="couponForm" class="form-grid">
+              <label>
+                <span>券码</span>
+                <input id="couponCodeInput" value="VINO1000" required />
+              </label>
+              <label>
+                <span>名称</span>
+                <input id="couponNameInput" value="上线优惠" />
+              </label>
+              <label>
+                <span>优惠金额</span>
+                <input id="couponValueInput" type="number" min="0" value="1000" />
+              </label>
+              <label>
+                <span>使用上限</span>
+                <input id="couponLimitInput" type="number" min="0" value="100" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存优惠券</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>运营活动</h2>
+              <span id="activityCountLabel" class="muted">0</span>
+            </div>
+            <form id="activityForm" class="form-grid">
+              <label>
+                <span>标题</span>
+                <input id="activityTitleInput" value="工业视觉模型试运行" required />
+              </label>
+              <label>
+                <span>位置</span>
+                <select id="activityPlacementInput">
+                  <option value="home">首页</option>
+                  <option value="industry">行业精选</option>
+                </select>
+              </label>
+              <label class="span-2">
+                <span>描述</span>
+                <input id="activityDescriptionInput" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存活动</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>分类与参数</h2>
+              <span id="categoryCountLabel" class="muted">0</span>
+            </div>
+            <form id="categoryForm" class="form-grid">
+              <label>
+                <span>分类名称</span>
+                <input id="categoryNameInput" required />
+              </label>
+              <label>
+                <span>Slug</span>
+                <input id="categorySlugInput" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存分类</button>
+              </div>
+            </form>
+            <form id="settingsForm" class="form-grid separated">
+              <label>
+                <span>平台佣金比例</span>
+                <input id="settingsCommissionInput" type="number" step="0.01" min="0" max="1" />
+              </label>
+              <label>
+                <span>默认试用天数</span>
+                <input id="settingsTrialDaysInput" type="number" min="1" />
+              </label>
+              <label>
+                <span>默认离线租约天数</span>
+                <input id="settingsOfflineDaysInput" type="number" min="1" />
+              </label>
+              <label>
+                <span>下载票据分钟</span>
+                <input id="settingsTicketMinutesInput" type="number" min="1" />
+              </label>
+              <div class="form-actions span-2">
+                <button class="btn primary" type="submit">保存参数</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>运营列表</h2>
+              <span class="muted">Ops</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>名称</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="opsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

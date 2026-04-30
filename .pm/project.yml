@@ -3,7 +3,8 @@ name: vino
 summary: >
   `vino` 正从 iPhone + Desktop 双端工业视觉系统，收敛为以 iPhone 边缘采集/推理终端为核心、
   以“本地 Web 接收节点 + 云端 Web 业务后台”的双层 Web 架构为主的产品形态；当前已补充模型售卖、
-  账号授权、离线租约与混合接收/云端业务分层方案。
+  账号授权、离线租约、混合接收/云端业务分层方案，并新增 `vino_platform` 作为正式模型交易、
+  授权、分发与运营后台方向。
 status: active
 phase: building
 tags:
@@ -23,7 +24,7 @@ features:
     title: Bonjour + TCP JSONL 控制协议与文件分块传输
     status: done
   - id: FEAT-MODEL-BUNDLE
-    title: `.mlmodel` / `.mlpackage` / `.mlmodelc` 模型分发链路
+    title: "`.mlmodel` / `.mlpackage` / `.mlmodelc` 模型分发链路"
     status: done
   - id: FEAT-MODEL-COMMERCE
     title: Web 模型售卖与 iPhone 账号授权方案
@@ -34,6 +35,9 @@ features:
   - id: FEAT-LOCAL-INGEST
     title: 本地 Web 媒体接收与缓存节点
     status: in_progress
+  - id: FEAT-VINO-PLATFORM
+    title: vino_platform 模型交易、授权、分发与运营后台
+    status: done
 requirements:
   - id: REQ-CORE-1
     title: 双端工业视觉主链路可用
@@ -67,6 +71,13 @@ requirements:
     summary: >
       核心产品形态应收敛为 iPhone 执行端 + 本地 Web 接收节点 + 云端 Web 业务后台；本地负责媒体接收与缓冲，
       云端负责账号、授权、售卖、模型分发与业务管理，Desktop 更适合作为内部调试工具。
+  - id: REQ-PLATFORM-1
+    title: 新建 vino_platform 文档与后续实现范围
+    status: in_progress
+    priority: high
+    summary: >
+      `vino_platform` 文件态 MVP 已承接模型交易、开发者入驻、模型审核、订单支付、Entitlement、下载票据、
+      离线租约、结算发票、售后定制、运营配置、角色权限和后台审计；`vino_iPhone` 保持终端定位，本轮不修改。
 progress:
   summary: 5 done, 3 in progress, 0 blocked, 3 pending.
   counts:
@@ -79,6 +90,8 @@ blockers:
   - 离线授权可以显著提高盗版成本，但无法在越狱或被逆向环境下实现绝对 DRM。
 next_actions:
   - 冻结账号体系、Entitlement、设备激活与离线租约的数据模型。
+  - 基于 `vino_platform` 文档冻结 P0 数据模型、API 契约与后台页面清单。
+  - 将 `vino_platform` 文件态 MVP 迁移为数据库、对象存储、队列和生产鉴权版本。
   - 评估 `vino_iPhone` 的登录、模型商城同步与本地授权校验接入点。
   - 定义本地 Web 接收节点：图片/视频/结果上传、局域网缓存、断网续传与云端转发。
   - 设计云端 Web 后台：模型售卖、订单、授权分配、项目与设备管理。
@@ -102,6 +115,10 @@ links:
     value: docs/vino-boss-deck.md
   - label: boss-deck-pptx
     value: docs/vino-boss-deck.pptx
+  - label: vino-platform
+    value: vino_platform/README.md
+  - label: vino-platform-role-matrix
+    value: vino_platform/docs/08-role-matrix.md
 meta:
   source: codex-maintained
-  last_reviewed_at: '2026-04-06'
+  last_reviewed_at: '2026-04-29'
