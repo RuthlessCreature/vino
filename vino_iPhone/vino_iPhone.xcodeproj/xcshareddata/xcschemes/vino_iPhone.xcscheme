@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E10000000000000000000001"
-               BuildableName = "vino_iPhone.app"
+               BuildableName = "&#x7075;&#x773c;GX.app"
                BlueprintName = "vino_iPhone"
                ReferencedContainer = "container:vino_iPhone.xcodeproj">
             </BuildableReference>
@@ -45,7 +45,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E10000000000000000000001"
-            BuildableName = "vino_iPhone.app"
+            BuildableName = "&#x7075;&#x773c;GX.app"
             BlueprintName = "vino_iPhone"
             ReferencedContainer = "container:vino_iPhone.xcodeproj">
          </BuildableReference>
@@ -62,7 +62,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E10000000000000000000001"
-            BuildableName = "vino_iPhone.app"
+            BuildableName = "&#x7075;&#x773c;GX.app"
             BlueprintName = "vino_iPhone"
             ReferencedContainer = "container:vino_iPhone.xcodeproj">
          </BuildableReference>
@@ -73,6 +73,7 @@
    </AnalyzeAction>
    <ArchiveAction
       buildConfiguration = "Release"
+      customArchiveName = "&#x7075;&#x773c;GX"
       revealArchiveInOrganizer = "YES">
    </ArchiveAction>
 </Scheme>

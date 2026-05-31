@@ -35,7 +35,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		C10000000000000000000001 /* vino_iPhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = vino_iPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000001 /* 灵眼GX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "灵眼GX.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000002 /* VinoPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinoPhoneApp.swift; sourceTree = "<group>"; };
 		C10000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C10000000000000000000004 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -87,7 +87,7 @@
 		D10000000000000000000002 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C10000000000000000000001 /* vino_iPhone.app */,
+				C10000000000000000000001 /* 灵眼GX.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -123,17 +123,6 @@
 				C10000000000000000000005 /* VinoPhoneShellView.swift */,
 			);
 			path = App;
-			sourceTree = "<group>";
-		};
-		D1000000000000000000000B /* Auth */ = {
-			isa = PBXGroup;
-			children = (
-				C10000000000000000000013 /* AuthModels.swift */,
-				C10000000000000000000014 /* KeychainStore.swift */,
-				C10000000000000000000015 /* AuthSessionStore.swift */,
-				C10000000000000000000016 /* AuthService.swift */,
-			);
-			path = Auth;
 			sourceTree = "<group>";
 		};
 		D10000000000000000000006 /* Camera */ = {
@@ -188,6 +177,17 @@
 			path = Overlay;
 			sourceTree = "<group>";
 		};
+		D1000000000000000000000B /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000013 /* AuthModels.swift */,
+				C10000000000000000000014 /* KeychainStore.swift */,
+				C10000000000000000000015 /* AuthSessionStore.swift */,
+				C10000000000000000000016 /* AuthService.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -204,8 +204,8 @@
 			dependencies = (
 			);
 			name = vino_iPhone;
-			productName = vino_iPhone;
-			productReference = C10000000000000000000001 /* vino_iPhone.app */;
+			productName = "灵眼GX";
+			productReference = C10000000000000000000001 /* 灵眼GX.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -415,19 +415,21 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = RTCUR694DS;
+				DEVELOPMENT_TEAM = J2TKXQB55U;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AppHost/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cc.vino.iphone;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = vino_iPhone;
+				PRODUCT_NAME = "灵眼GX";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -447,19 +449,21 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = RTCUR694DS;
+				DEVELOPMENT_TEAM = J2TKXQB55U;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AppHost/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cc.vino.iphone;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = vino_iPhone;
+				PRODUCT_NAME = "灵眼GX";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;

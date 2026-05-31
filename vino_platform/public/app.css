@@ -55,6 +55,28 @@ body {
   box-shadow: var(--shadow);
 }
 
+.login-demo-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.demo-account {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.demo-account:hover {
+  border-color: var(--accent-2);
+  color: var(--text);
+}
+
 .topbar,
 .panel,
 .summary-card,
@@ -167,6 +189,11 @@ h2 {
   border-color: rgba(239, 111, 108, 0.46);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .tabs {
   display: flex;
   gap: 4px;
@@ -225,6 +252,80 @@ h2 {
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.overview-cloud-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+  gap: 14px;
+}
+
+.terminal-access-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+  gap: 14px;
+}
+
+.cloud-access-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.endpoint-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.endpoint-value {
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b0f14;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.endpoint-meta,
+.flow-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flow-step {
+  flex: 1 1 150px;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.flow-step.is-ready {
+  border-color: rgba(103, 211, 154, 0.38);
+}
+
+.flow-step.is-waiting {
+  border-color: rgba(228, 179, 99, 0.34);
+}
+
+.flow-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.flow-value {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 720;
 }
 
 .layout {
@@ -382,6 +483,14 @@ tr:last-child td {
   .layout.two {
     grid-template-columns: 1fr;
   }
+
+  .overview-cloud-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .terminal-access-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -400,5 +509,9 @@ tr:last-child td {
 
   .span-2 {
     grid-column: span 1;
+  }
+
+  .endpoint-row {
+    grid-template-columns: 1fr;
   }
 }

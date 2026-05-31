@@ -7,6 +7,14 @@ const els = {
   loginErrorLabel: document.getElementById('loginErrorLabel'),
   currentUserLabel: document.getElementById('currentUserLabel'),
   lastUpdatedLabel: document.getElementById('lastUpdatedLabel'),
+  cloudEndpointLabel: document.getElementById('cloudEndpointLabel'),
+  copyCloudEndpointButton: document.getElementById('copyCloudEndpointButton'),
+  flowHealthLabel: document.getElementById('flowHealthLabel'),
+  businessFlowList: document.getElementById('businessFlowList'),
+  terminalEndpointLabel: document.getElementById('terminalEndpointLabel'),
+  copyTerminalEndpointButton: document.getElementById('copyTerminalEndpointButton'),
+  terminalHealthLabel: document.getElementById('terminalHealthLabel'),
+  terminalHealthList: document.getElementById('terminalHealthList'),
   refreshButton: document.getElementById('refreshButton'),
   logoutButton: document.getElementById('logoutButton'),
   summaryGrid: document.getElementById('summaryGrid'),
@@ -30,8 +38,12 @@ const els = {
   developerModelCategoryInput: document.getElementById('developerModelCategoryInput'),
   developerModelSummaryInput: document.getElementById('developerModelSummaryInput'),
   developerModelTagsInput: document.getElementById('developerModelTagsInput'),
+  developerBuildVersionInput: document.getElementById('developerBuildVersionInput'),
+  developerBuildFileInput: document.getElementById('developerBuildFileInput'),
   developersTableBody: document.getElementById('developersTableBody'),
+  developerModelsTableBody: document.getElementById('developerModelsTableBody'),
   developerCountLabel: document.getElementById('developerCountLabel'),
+  developerModelCountLabel: document.getElementById('developerModelCountLabel'),
   reviewsTableBody: document.getElementById('reviewsTableBody'),
   reviewCountLabel: document.getElementById('reviewCountLabel'),
   entitlementForm: document.getElementById('entitlementForm'),
@@ -59,19 +71,27 @@ const els = {
   skuMaxDevicesInput: document.getElementById('skuMaxDevicesInput'),
   skuOfflineDaysInput: document.getElementById('skuOfflineDaysInput'),
   ordersTableBody: document.getElementById('ordersTableBody'),
+  commerceOrdersTableBody: document.getElementById('commerceOrdersTableBody'),
   auditTableBody: document.getElementById('auditTableBody'),
   entitlementsTableBody: document.getElementById('entitlementsTableBody'),
   modelsTableBody: document.getElementById('modelsTableBody'),
+  usersTableBody: document.getElementById('usersTableBody'),
+  skusTableBody: document.getElementById('skusTableBody'),
   devicesTableBody: document.getElementById('devicesTableBody'),
+  ticketsTableBody: document.getElementById('ticketsTableBody'),
+  leasesTableBody: document.getElementById('leasesTableBody'),
   resultsTableBody: document.getElementById('resultsTableBody'),
   assetsTableBody: document.getElementById('assetsTableBody'),
   orderCountLabel: document.getElementById('orderCountLabel'),
+  commerceOrderCountLabel: document.getElementById('commerceOrderCountLabel'),
   auditCountLabel: document.getElementById('auditCountLabel'),
   entitlementCountLabel: document.getElementById('entitlementCountLabel'),
   userCountLabel: document.getElementById('userCountLabel'),
   skuCountLabel: document.getElementById('skuCountLabel'),
   modelCountLabel: document.getElementById('modelCountLabel'),
   deviceCountLabel: document.getElementById('deviceCountLabel'),
+  ticketCountLabel: document.getElementById('ticketCountLabel'),
+  leaseCountLabel: document.getElementById('leaseCountLabel'),
   resultCountLabel: document.getElementById('resultCountLabel'),
   assetCountLabel: document.getElementById('assetCountLabel'),
   supportForm: document.getElementById('supportForm'),
@@ -163,6 +183,10 @@ function formatMoney(value, currency = 'CNY') {
   return `${currency} ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function cloudEndpoint() {
+  return window.location.origin;
+}
+
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.remove('hidden');
@@ -185,6 +209,18 @@ async function fetchJson(path, options = {}) {
     throw new Error(payload.error?.message || payload.error || `HTTP ${response.status}`);
   }
   return payload;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const value = String(reader.result || '');
+      resolve(value.includes(',') ? value.split(',').pop() : value);
+    });
+    reader.addEventListener('error', () => reject(reader.error || new Error('file read failed')));
+    reader.readAsDataURL(file);
+  });
 }
 
 function setSession(payload) {
@@ -265,7 +301,7 @@ function statusBadge(status) {
     ? 'ok'
     : ['pending_payment', 'draft', 'in_review', 'issued'].includes(normalized)
       ? 'warn'
-      : ['revoked', 'rejected', 'failed', 'disabled'].includes(normalized)
+      : ['revoked', 'rejected', 'failed', 'disabled', 'expired'].includes(normalized)
         ? 'danger'
         : '';
   return `<span class="badge ${className}">${escapeHtml(status || '-')}</span>`;
@@ -304,6 +340,10 @@ function canConfirmPayments() {
   return hasFeature('confirmPayments', () => hasRole('super_admin', 'admin', 'platform_ops', 'finance'));
 }
 
+function canRequestRefunds() {
+  return hasFeature('requestRefunds', () => hasRole('super_admin', 'admin', 'platform_ops', 'finance', 'buyer_admin'));
+}
+
 function canReviewModels() {
   return hasFeature('reviewModels', () => hasRole('super_admin', 'admin', 'platform_ops', 'reviewer'));
 }
@@ -322,6 +362,10 @@ function canCreateSupportTickets() {
 
 function canCreateCustomRequests() {
   return hasFeature('createCustomRequests', () => hasRole('super_admin', 'admin', 'platform_ops', 'buyer_admin', 'buyer_operator'));
+}
+
+function canAcceptCustomRequests() {
+  return hasRole('super_admin', 'admin', 'platform_ops', 'buyer_admin');
 }
 
 function canSubmitCustomProposals() {
@@ -355,6 +399,70 @@ function renderSummary(summary) {
       <div class="summary-detail">${escapeHtml(detail)}</div>
     </article>
   `).join('');
+}
+
+function renderCloudAccess(data) {
+  els.cloudEndpointLabel.textContent = cloudEndpoint();
+  const ticketMinutes = data.platformSettings?.downloadTicketMinutes || 15;
+  const badge = document.querySelector('.cloud-access-panel .endpoint-meta .pill:last-child');
+  if (badge) {
+    badge.textContent = `票据 ${ticketMinutes} 分钟`;
+  }
+}
+
+function renderBusinessFlow(data) {
+  const summary = data.summary || {};
+  const paidOrders = Number(summary.paidOrders || 0);
+  const steps = [
+    ['模型上架', summary.models || 0, 'listed models'],
+    ['订单收款', paidOrders, 'paid orders'],
+    ['授权发放', summary.entitlements || 0, 'entitlements'],
+    ['终端下载', summary.tickets || 0, 'tickets'],
+    ['结果回传', summary.results || 0, 'results'],
+  ];
+  const readyCount = steps.filter(([, value]) => Number(value || 0) > 0).length;
+  els.flowHealthLabel.textContent = readyCount >= 4 ? '闭环可演示' : '待补数据';
+  els.flowHealthLabel.className = `badge ${readyCount >= 4 ? 'ok' : 'warn'}`;
+  els.businessFlowList.innerHTML = steps.map(([label, value, detail]) => {
+    const ready = Number(value || 0) > 0;
+    return `
+      <article class="flow-step ${ready ? 'is-ready' : 'is-waiting'}">
+        <div class="flow-label">
+          <span>${escapeHtml(label)}</span>
+          ${statusBadge(ready ? 'ready' : 'pending')}
+        </div>
+        <div class="flow-value">${escapeHtml(value)}</div>
+        <div class="summary-detail">${escapeHtml(detail)}</div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderTerminalAccess(data) {
+  const summary = data.summary || {};
+  els.terminalEndpointLabel.textContent = cloudEndpoint();
+  const steps = [
+    ['设备登录', summary.devices || 0, 'devices'],
+    ['下载票据', summary.tickets || 0, 'tickets'],
+    ['离线租约', summary.leases || 0, 'leases'],
+    ['结果回传', summary.results || 0, 'results'],
+  ];
+  const readyCount = steps.filter(([, value]) => Number(value || 0) > 0).length;
+  els.terminalHealthLabel.textContent = readyCount >= 3 ? '接入正常' : '待接入';
+  els.terminalHealthLabel.className = `badge ${readyCount >= 3 ? 'ok' : 'warn'}`;
+  els.terminalHealthList.innerHTML = steps.map(([label, value, detail]) => {
+    const ready = Number(value || 0) > 0;
+    return `
+      <article class="flow-step ${ready ? 'is-ready' : 'is-waiting'}">
+        <div class="flow-label">
+          <span>${escapeHtml(label)}</span>
+          ${statusBadge(ready ? 'ready' : 'pending')}
+        </div>
+        <div class="flow-value">${escapeHtml(value)}</div>
+        <div class="summary-detail">${escapeHtml(detail)}</div>
+      </article>
+    `;
+  }).join('');
 }
 
 function renderSelects(data) {
@@ -393,38 +501,63 @@ function renderAssignmentOptions() {
     els.entitlementAssignedToInput.innerHTML = data.organizations.map((org) => option(org.organizationId, `${org.name} / ${org.organizationId}`)).join('');
     return;
   }
+  if (els.entitlementAssignedTypeInput.value === 'device') {
+    els.entitlementAssignedToInput.innerHTML = data.devices.map((device) => option(device.deviceBindingId, `${device.name} / ${device.deviceBindingId}`)).join('');
+    return;
+  }
   els.entitlementAssignedToInput.innerHTML = data.users.map((user) => option(user.userId, `${user.displayName} / ${user.email}`)).join('');
 }
 
-function renderOrders(orders) {
-  els.orderCountLabel.textContent = `${orders.length}`;
+function orderRows(orders, limit = orders.length) {
   if (orders.length === 0) {
-    els.ordersTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无订单</td></tr>';
-    return;
+    return '<tr><td colspan="5" class="empty">暂无订单</td></tr>';
   }
-  els.ordersTableBody.innerHTML = orders.slice(0, 16).map((order) => {
+  return orders.slice(0, limit).map((order) => {
     const org = state.overview.organizations.find((item) => item.organizationId === order.buyerOrganizationId);
     const canConfirm = order.status === 'pending_payment' && canConfirmPayments();
+    const canRefund = canRequestRefunds() && ['paid', 'delivering', 'completed', 'after_sale'].includes(order.status);
+    const modelNames = (order.items || [])
+      .map((item) => state.overview.models.find((model) => model.modelId === item.modelId)?.name || item.modelId)
+      .join(' / ');
+    const orderItemIds = new Set((order.items || []).map((item) => item.orderItemId));
+    const grantedCount = (state.overview.entitlements || [])
+      .filter((entitlement) => entitlement.sourceOrderItemId && orderItemIds.has(entitlement.sourceOrderItemId))
+      .length;
+    const deliveryLabel = order.status === 'pending_payment'
+      ? '待收款'
+      : `已发放 ${grantedCount} 项授权`;
     return `
       <tr>
         <td>
           <div class="mono">${escapeHtml(order.orderId)}</div>
           <div class="subtle">${escapeHtml(formatDate(order.createdAt))}</div>
+          <div class="subtle">${escapeHtml(modelNames || '-')}</div>
         </td>
         <td>${escapeHtml(org?.name || order.buyerOrganizationId)}</td>
         <td>
           <div>${escapeHtml(formatMoney(order.totalAmount, order.currency))}</div>
           ${order.discountAmount ? `<div class="subtle">优惠 ${escapeHtml(formatMoney(order.discountAmount, order.currency))}</div>` : ''}
         </td>
-        <td>${statusBadge(order.status)}</td>
+        <td>
+          <div>${statusBadge(order.status)}</div>
+          <div class="subtle">${escapeHtml(deliveryLabel)}</div>
+        </td>
         <td>
           <div class="row-actions">
             ${canConfirm ? `<button class="btn primary" data-action="confirm-payment" data-order-id="${escapeHtml(order.orderId)}" type="button">确认收款</button>` : ''}
+            ${canRefund ? `<button class="btn danger" data-action="refund-order" data-order-id="${escapeHtml(order.orderId)}" type="button">退款/售后</button>` : ''}
           </div>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+function renderOrders(orders) {
+  els.orderCountLabel.textContent = `${orders.length}`;
+  els.ordersTableBody.innerHTML = orderRows(orders, 16);
+  els.commerceOrderCountLabel.textContent = `${orders.length}`;
+  els.commerceOrdersTableBody.innerHTML = orderRows(orders);
 }
 
 function renderEntitlements(entitlements) {
@@ -491,10 +624,57 @@ function renderModels(models) {
 
 function renderUsers(users) {
   els.userCountLabel.textContent = `${users.length}`;
+  if (!els.usersTableBody) {
+    return;
+  }
+  if (users.length === 0) {
+    els.usersTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无用户</td></tr>';
+    return;
+  }
+  els.usersTableBody.innerHTML = users.map((user) => {
+    const organization = state.overview.organizations.find((item) => item.organizationId === user.organizationId);
+    const nextStatus = user.status === 'disabled' ? 'active' : 'disabled';
+    return `
+      <tr>
+        <td>
+          <div>${escapeHtml(user.displayName)}</div>
+          <div class="subtle mono">${escapeHtml(user.email)}</div>
+        </td>
+        <td>${escapeHtml(user.roleLabel || user.role)}</td>
+        <td>${escapeHtml(organization?.name || user.organizationId)}</td>
+        <td>${statusBadge(user.status)}</td>
+        <td>
+          ${canManageOps() ? `<button class="btn ${nextStatus === 'disabled' ? 'danger' : 'primary'}" data-action="toggle-user-status" data-user-id="${escapeHtml(user.userId)}" data-next-status="${escapeHtml(nextStatus)}" type="button">${nextStatus === 'disabled' ? '禁用' : '启用'}</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderSkus(skus) {
   els.skuCountLabel.textContent = `${skus.length}`;
+  if (!els.skusTableBody) {
+    return;
+  }
+  if (skus.length === 0) {
+    els.skusTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无 SKU</td></tr>';
+    return;
+  }
+  els.skusTableBody.innerHTML = skus.map((sku) => {
+    const model = state.overview.models.find((item) => item.modelId === sku.modelId);
+    return `
+      <tr>
+        <td>
+          <div>${escapeHtml(sku.name)}</div>
+          <div class="subtle mono">${escapeHtml(sku.skuId)}</div>
+        </td>
+        <td>${escapeHtml(model?.name || sku.modelId)}</td>
+        <td>${escapeHtml(formatMoney(sku.priceAmount, sku.currency))}</td>
+        <td>${escapeHtml(sku.licenseType)} / ${escapeHtml(sku.durationDays || '-')} 天 / ${escapeHtml(sku.maxDevices || 1)} 台</td>
+        <td>${statusBadge(sku.status)}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderAudit(logs) {
@@ -518,20 +698,73 @@ function renderAudit(logs) {
 function renderDevices(devices) {
   els.deviceCountLabel.textContent = `${devices.length}`;
   if (devices.length === 0) {
-    els.devicesTableBody.innerHTML = '<tr><td colspan="4" class="empty">暂无设备</td></tr>';
+    els.devicesTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无设备</td></tr>';
     return;
   }
   els.devicesTableBody.innerHTML = devices.map((device) => {
     const org = state.overview.organizations.find((item) => item.organizationId === device.organizationId);
+    const blocked = device.status === 'blocked';
     return `
       <tr>
         <td>
           <div>${escapeHtml(device.name)}</div>
           <div class="subtle mono">${escapeHtml(device.deviceBindingId)}</div>
+          <div class="subtle">${statusBadge(device.status || 'active')}</div>
         </td>
         <td>${escapeHtml(org?.name || device.organizationId)}</td>
         <td>${escapeHtml(device.platform || '-')}</td>
         <td>${escapeHtml(formatDate(device.lastSeenAt))}</td>
+        <td>
+          ${canManageOps() ? `<button class="btn ${blocked ? 'primary' : 'danger'}" data-action="toggle-device-block" data-device-id="${escapeHtml(device.deviceId)}" data-block="${blocked ? 'false' : 'true'}" type="button">${blocked ? '解封' : '封禁'}</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderTickets(tickets) {
+  els.ticketCountLabel.textContent = `${tickets.length}`;
+  if (tickets.length === 0) {
+    els.ticketsTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无下载票据</td></tr>';
+    return;
+  }
+  els.ticketsTableBody.innerHTML = tickets.slice(0, 20).map((ticket) => {
+    const model = state.overview.models.find((item) => item.modelId === ticket.modelId);
+    const expired = ticket.expiresAt && new Date(ticket.expiresAt).getTime() <= Date.now();
+    const status = ticket.status === 'issued' && expired ? 'expired' : ticket.status;
+    return `
+      <tr>
+        <td>
+          <div class="mono">${escapeHtml(ticket.ticketId)}</div>
+          <div class="subtle">${escapeHtml(formatDate(ticket.createdAt))}</div>
+        </td>
+        <td>${escapeHtml(model?.name || ticket.modelId)}</td>
+        <td class="mono">${escapeHtml(ticket.deviceId || '-')}</td>
+        <td>${statusBadge(status)}</td>
+        <td>${escapeHtml(formatDate(ticket.expiresAt))}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderLeases(leases) {
+  els.leaseCountLabel.textContent = `${leases.length}`;
+  if (leases.length === 0) {
+    els.leasesTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无离线租约</td></tr>';
+    return;
+  }
+  els.leasesTableBody.innerHTML = leases.slice(0, 20).map((lease) => {
+    const model = state.overview.models.find((item) => item.modelId === lease.modelId);
+    return `
+      <tr>
+        <td>
+          <div class="mono">${escapeHtml(lease.leaseId)}</div>
+          <div class="subtle">${escapeHtml(lease.licenseId || '')}</div>
+        </td>
+        <td>${escapeHtml(model?.name || lease.modelId)}</td>
+        <td class="mono">${escapeHtml(lease.deviceId || '-')}</td>
+        <td>${statusBadge(lease.status)}</td>
+        <td>${escapeHtml(formatDate(lease.leaseExpiresAt))}</td>
       </tr>
     `;
   }).join('');
@@ -580,8 +813,9 @@ function renderMarket(models) {
     return;
   }
   const actionButtons = (model) => canUseMarketplace() ? `
+    ${canCreateOrders() && model.sku ? `<button class="btn primary" data-action="create-market-order" data-sku-id="${escapeHtml(model.sku.skuId)}" type="button">创建订单</button>` : ''}
     <button class="btn" data-action="favorite-model" data-model-id="${escapeHtml(model.modelId)}" type="button">收藏</button>
-    <button class="btn primary" data-action="trial-model" data-model-id="${escapeHtml(model.modelId)}" type="button">试用</button>
+    <button class="btn ${canCreateOrders() ? '' : 'primary'}" data-action="trial-model" data-model-id="${escapeHtml(model.modelId)}" type="button">试用</button>
     <button class="btn" data-action="review-model" data-model-id="${escapeHtml(model.modelId)}" type="button">五星评价</button>
   ` : '';
   els.marketTableBody.innerHTML = models.map((model) => `
@@ -626,6 +860,59 @@ function renderDevelopers(developers) {
   `).join('');
 }
 
+function renderDeveloperModels(models) {
+  els.developerModelCountLabel.textContent = `${models.length}`;
+  if (models.length === 0) {
+    els.developerModelsTableBody.innerHTML = '<tr><td colspan="5" class="empty">暂无模型</td></tr>';
+    return;
+  }
+  els.developerModelsTableBody.innerHTML = models.map((model) => {
+    const sku = model.sku;
+    const canSubmit = canDeveloperSelfService() && ['draft', 'rejected'].includes(model.status);
+    const canCreateDefaultSku = canManageOps() && !sku;
+    const canApprove = canReviewModels() && sku && ['draft', 'in_review', 'approved', 'rejected', 'delisted'].includes(model.status);
+    const canReject = canReviewModels() && model.status !== 'rejected';
+    const baseNextStep = {
+      draft: '可提交审核',
+      in_review: '等待平台审核',
+      approved: '待上架',
+      listed: '商城可售',
+      delisted: '已下架',
+      rejected: '修改后可重提',
+    }[model.status] || '待处理';
+    const nextStep = !sku && canManageOps() && model.status !== 'listed'
+      ? '先配置 SKU'
+      : baseNextStep;
+    return `
+      <tr>
+        <td>
+          <div>${escapeHtml(model.name)}</div>
+          <div class="subtle mono">${escapeHtml(model.modelId)}</div>
+          <div class="subtle">${escapeHtml(model.summary || '')}</div>
+          <div class="subtle">${escapeHtml(model.currentBuild?.fileName || '未上传构建')} ${model.currentBuild?.sha256 ? `/ ${escapeHtml(String(model.currentBuild.sha256).slice(0, 10))}` : ''}</div>
+        </td>
+        <td>
+          <div>${statusBadge(model.status)}</div>
+          <div class="subtle">${escapeHtml(nextStep)}</div>
+        </td>
+        <td>
+          <div>${escapeHtml(sku?.name || '-')}</div>
+          <div class="subtle">${sku ? escapeHtml(formatMoney(sku.priceAmount, sku.currency)) : '待配置 SKU'}</div>
+        </td>
+        <td>${escapeHtml(model.assignmentCount || 0)}</td>
+        <td>
+          <div class="row-actions">
+            ${canSubmit ? `<button class="btn primary" data-action="submit-model-review" data-model-id="${escapeHtml(model.modelId)}" type="button">提交审核</button>` : ''}
+            ${canCreateDefaultSku ? `<button class="btn primary" data-action="create-default-sku" data-model-id="${escapeHtml(model.modelId)}" type="button">配置 SKU</button>` : ''}
+            ${canApprove ? `<button class="btn primary" data-action="approve-supply-model" data-model-id="${escapeHtml(model.modelId)}" type="button">上架</button>` : ''}
+            ${canReject ? `<button class="btn danger" data-action="reject-supply-model" data-model-id="${escapeHtml(model.modelId)}" type="button">驳回</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
 function renderReviews(reviews) {
   els.reviewCountLabel.textContent = `${reviews.length}`;
   if (reviews.length === 0) {
@@ -643,7 +930,7 @@ function renderReviews(reviews) {
       <td>
         ${canReviewModels() && review.status === 'pending' && review.subjectType === 'model' ? `
           <div class="row-actions">
-            <button class="btn primary" data-action="approve-model-review" data-model-id="${escapeHtml(review.subjectId)}" type="button">上架</button>
+            <button class="btn primary" data-action="approve-model-review" data-model-id="${escapeHtml(review.subjectId)}" type="button">配置 SKU 并上架</button>
             <button class="btn danger" data-action="reject-model-review" data-model-id="${escapeHtml(review.subjectId)}" type="button">驳回</button>
           </div>
         ` : ''}
@@ -684,11 +971,15 @@ function renderCustomRequests(requests) {
       <td>
         <div>${escapeHtml(request.title)}</div>
         <div class="subtle">${escapeHtml(request.scenario || '')}</div>
+        <div class="subtle">${escapeHtml((request.proposals || []).length)} 个报价</div>
       </td>
       <td>${escapeHtml(formatMoney(request.budgetAmount, request.currency))}</td>
       <td>${statusBadge(request.status)}</td>
       <td>
-        ${canSubmitCustomProposals() ? `<button class="btn" data-action="submit-proposal" data-request-id="${escapeHtml(request.customRequestId)}" type="button">提交报价</button>` : ''}
+        <div class="row-actions">
+          ${canSubmitCustomProposals() ? `<button class="btn" data-action="submit-proposal" data-request-id="${escapeHtml(request.customRequestId)}" type="button">提交报价</button>` : ''}
+          ${canAcceptCustomRequests() && (request.proposals || []).some((proposal) => proposal.status === 'submitted') ? `<button class="btn primary" data-action="accept-proposal" data-request-id="${escapeHtml(request.customRequestId)}" data-proposal-id="${escapeHtml((request.proposals || []).find((proposal) => proposal.status === 'submitted')?.proposalId || '')}" type="button">接受报价</button>` : ''}
+        </div>
       </td>
     </tr>
   `).join('');
@@ -779,6 +1070,9 @@ function renderOps(data) {
 function renderAll(data) {
   applyRoleNavigation(data);
   renderSummary(data.summary || {});
+  renderCloudAccess(data);
+  renderBusinessFlow(data);
+  renderTerminalAccess(data);
   renderSelects(data);
   renderOrders(data.orders || []);
   renderMarket(state.marketModels.length ? state.marketModels : (data.models || []).filter((model) => model.status === 'listed').map((model) => ({
@@ -789,6 +1083,7 @@ function renderAll(data) {
     soldCount: model.assignmentCount || 0,
   })));
   renderDevelopers(data.developers || []);
+  renderDeveloperModels(data.models || []);
   renderReviews(data.reviews || []);
   renderEntitlements(data.entitlements || []);
   renderModels(data.models || []);
@@ -796,6 +1091,8 @@ function renderAll(data) {
   renderSkus(data.modelSkus || []);
   renderAudit(data.auditLogs || []);
   renderDevices(data.devices || []);
+  renderTickets(data.tickets || []);
+  renderLeases(data.leases || []);
   renderResults(data.recentResults || []);
   renderAssets(data.recentAssets || []);
   renderSupport(data.supportTickets || []);
@@ -822,7 +1119,7 @@ function fillEntitlementForm(entitlementId) {
   }
   els.entitlementIdInput.value = entitlement.entitlementId;
   els.entitlementModelInput.value = entitlement.modelId;
-  els.entitlementAssignedTypeInput.value = entitlement.assignedToType === 'organization' ? 'organization' : 'user';
+  els.entitlementAssignedTypeInput.value = ['organization', 'device'].includes(entitlement.assignedToType) ? entitlement.assignedToType : 'user';
   renderAssignmentOptions();
   els.entitlementAssignedToInput.value = entitlement.assignedToId;
   els.entitlementRenewalModeInput.value = entitlement.renewalMode || 'perpetual';
@@ -849,8 +1146,8 @@ els.loginForm.addEventListener('submit', async (event) => {
     const payload = await fetchJson('/api/platform/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({
-        email: els.loginAccountInput.value,
-        password: els.loginPasswordInput.value,
+        email: els.loginAccountInput.value.trim(),
+        password: els.loginPasswordInput.value.trim(),
         deviceId: 'web-console',
         deviceName: 'Platform Console',
         platform: 'web',
@@ -862,6 +1159,34 @@ els.loginForm.addEventListener('submit', async (event) => {
   } catch (error) {
     els.loginErrorLabel.textContent = error.message;
     els.loginErrorLabel.classList.remove('hidden');
+  }
+});
+
+document.querySelectorAll('.demo-account').forEach((button) => {
+  button.addEventListener('click', () => {
+    els.loginAccountInput.value = button.dataset.email || '';
+    els.loginPasswordInput.value = button.dataset.password || '';
+    els.loginErrorLabel.classList.add('hidden');
+  });
+});
+
+els.copyCloudEndpointButton.addEventListener('click', async () => {
+  const value = cloudEndpoint();
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast('Cloud URL 已复制');
+  } catch {
+    showToast(value);
+  }
+});
+
+els.copyTerminalEndpointButton.addEventListener('click', async () => {
+  const value = cloudEndpoint();
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast('Cloud URL 已复制');
+  } catch {
+    showToast(value);
   }
 });
 
@@ -912,16 +1237,51 @@ els.orderForm.addEventListener('submit', async (event) => {
 
 els.ordersTableBody.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
-  if (!button || button.dataset.action !== 'confirm-payment') {
+  if (!button) {
     return;
   }
   try {
-    await fetchJson(`/api/platform/v1/admin/orders/${button.dataset.orderId}/confirm-payment`, {
-      method: 'POST',
-      body: JSON.stringify({ provider: 'manual' }),
-    });
+    if (button.dataset.action === 'confirm-payment') {
+      await fetchJson(`/api/platform/v1/admin/orders/${button.dataset.orderId}/confirm-payment`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: 'manual' }),
+      });
+      showToast('收款已确认，授权已生成');
+    }
+    if (button.dataset.action === 'refund-order') {
+      await fetchJson(`/api/platform/v1/orders/${button.dataset.orderId}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: '平台控制台发起售后/退款' }),
+      });
+      showToast('退款/售后状态已更新');
+    }
     await refreshOverview();
-    showToast('收款已确认，授权已生成');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+els.commerceOrdersTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('button');
+  if (!button) {
+    return;
+  }
+  try {
+    if (button.dataset.action === 'confirm-payment') {
+      await fetchJson(`/api/platform/v1/admin/orders/${button.dataset.orderId}/confirm-payment`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: 'manual' }),
+      });
+      showToast('收款已确认，授权已生成');
+    }
+    if (button.dataset.action === 'refund-order') {
+      await fetchJson(`/api/platform/v1/orders/${button.dataset.orderId}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: '平台控制台发起售后/退款' }),
+      });
+      showToast('退款/售后状态已更新');
+    }
+    await refreshOverview();
   } catch (error) {
     showToast(error.message);
   }
@@ -930,13 +1290,19 @@ els.ordersTableBody.addEventListener('click', async (event) => {
 els.entitlementForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
+    const assignedToType = els.entitlementAssignedTypeInput.value;
+    const assignedToId = els.entitlementAssignedToInput.value;
+    const device = assignedToType === 'device'
+      ? state.overview.devices.find((item) => item.deviceBindingId === assignedToId)
+      : null;
     await fetchJson('/api/platform/v1/admin/entitlements', {
       method: 'POST',
       body: JSON.stringify({
         entitlementId: els.entitlementIdInput.value || undefined,
         modelId: els.entitlementModelInput.value,
-        assignedToType: els.entitlementAssignedTypeInput.value,
-        assignedToId: els.entitlementAssignedToInput.value,
+        assignedToType,
+        assignedToId,
+        organizationId: device?.organizationId || undefined,
         renewalMode: els.entitlementRenewalModeInput.value,
         renewalEndsAt: els.entitlementRenewalModeInput.value === 'fixed' ? els.entitlementRenewalEndsAtInput.value : null,
         offlineLeaseDays: Number(els.entitlementOfflineDaysInput.value || 30),
@@ -996,6 +1362,23 @@ els.userForm.addEventListener('submit', async (event) => {
   }
 });
 
+els.usersTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('button');
+  if (!button || button.dataset.action !== 'toggle-user-status') {
+    return;
+  }
+  try {
+    await fetchJson(`/api/platform/v1/users/${button.dataset.userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: button.dataset.nextStatus }),
+    });
+    await refreshOverview();
+    showToast(button.dataset.nextStatus === 'disabled' ? '用户已禁用' : '用户已启用');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
 els.skuForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
@@ -1035,6 +1418,26 @@ els.modelsTableBody.addEventListener('click', async (event) => {
   }
 });
 
+els.devicesTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('button');
+  if (!button || button.dataset.action !== 'toggle-device-block') {
+    return;
+  }
+  try {
+    await fetchJson(`/api/platform/v1/admin/devices/${button.dataset.deviceId}/block`, {
+      method: 'POST',
+      body: JSON.stringify({
+        block: button.dataset.block !== 'false',
+        reason: button.dataset.block !== 'false' ? '控制台手动封禁' : '',
+      }),
+    });
+    await refreshOverview();
+    showToast(button.dataset.block !== 'false' ? '设备已封禁，租约已撤销' : '设备已解封');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
 els.marketSearchForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
@@ -1055,6 +1458,20 @@ els.marketTableBody.addEventListener('click', async (event) => {
   if (!button) return;
   const modelId = button.dataset.modelId;
   try {
+    if (button.dataset.action === 'create-market-order') {
+      await fetchJson('/api/platform/v1/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          skuId: button.dataset.skuId,
+          quantity: 1,
+          paymentMode: 'offline_transfer',
+        }),
+      });
+      state.marketModels = [];
+      await refreshOverview();
+      document.querySelector('.tab[data-tab="commerce"]:not(.hidden)')?.click();
+      showToast('订单已创建，等待收款确认');
+    }
     if (button.dataset.action === 'favorite-model') {
       await fetchJson(`/api/platform/v1/models/${modelId}/favorite`, { method: 'POST', body: JSON.stringify({}) });
       showToast('已收藏');
@@ -1100,6 +1517,7 @@ els.developerProfileForm.addEventListener('submit', async (event) => {
 els.developerModelForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
+    const file = els.developerBuildFileInput.files?.[0] || null;
     const payload = await fetchJson('/api/platform/v1/developer/models', {
       method: 'POST',
       body: JSON.stringify({
@@ -1109,13 +1527,74 @@ els.developerModelForm.addEventListener('submit', async (event) => {
         tags: els.developerModelTagsInput.value,
       }),
     });
+    if (file) {
+      await fetchJson(`/api/platform/v1/developer/models/${payload.model.modelId}/builds`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          version: els.developerBuildVersionInput.value || '1.0.0',
+          contentBase64: await fileToBase64(file),
+        }),
+      });
+    }
     await fetchJson(`/api/platform/v1/developer/models/${payload.model.modelId}/submit-review`, {
       method: 'POST',
       body: JSON.stringify({}),
     });
     els.developerModelForm.reset();
+    els.developerBuildVersionInput.value = '1.0.0';
     await refreshOverview();
-    showToast('模型草稿已提交审核');
+    showToast(file ? '模型与构建已提交审核' : '模型草稿已提交审核');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+els.developerModelsTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  try {
+    if (button.dataset.action === 'submit-model-review') {
+      await fetchJson(`/api/platform/v1/developer/models/${button.dataset.modelId}/submit-review`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      await refreshOverview();
+      showToast('模型已提交审核');
+    }
+    if (button.dataset.action === 'create-default-sku') {
+      await fetchJson('/api/platform/v1/admin/model-skus', {
+        method: 'POST',
+        body: JSON.stringify({
+          modelId: button.dataset.modelId,
+          defaultSku: true,
+          name: 'Annual device-bound license',
+          priceAmount: 9800,
+          licenseType: 'subscription',
+          durationDays: 365,
+          maxDevices: 3,
+          offlineLeaseDays: 30,
+        }),
+      });
+      await refreshOverview();
+      showToast('SKU 已配置，可上架售卖');
+    }
+    if (button.dataset.action === 'approve-supply-model') {
+      await fetchJson(`/api/platform/v1/admin/models/${button.dataset.modelId}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'listed' }),
+      });
+      await refreshOverview();
+      showToast('模型已上架');
+    }
+    if (button.dataset.action === 'reject-supply-model') {
+      await fetchJson(`/api/platform/v1/admin/models/${button.dataset.modelId}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ decision: 'reject', note: '请补充模型材料后重新提交。' }),
+      });
+      await refreshOverview();
+      showToast('模型已驳回');
+    }
   } catch (error) {
     showToast(error.message);
   }
@@ -1214,16 +1693,25 @@ els.customRequestForm.addEventListener('submit', async (event) => {
 
 els.customRequestsTableBody.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
-  if (!button || button.dataset.action !== 'submit-proposal') {
+  if (!button) {
     return;
   }
   try {
-    await fetchJson(`/api/platform/v1/custom-requests/${button.dataset.requestId}/proposal`, {
-      method: 'POST',
-      body: JSON.stringify({ quoteAmount: 68000, body: '平台演示报价：2 周交付首版模型。' }),
-    });
+    if (button.dataset.action === 'submit-proposal') {
+      await fetchJson(`/api/platform/v1/custom-requests/${button.dataset.requestId}/proposal`, {
+        method: 'POST',
+        body: JSON.stringify({ quoteAmount: 68000, body: '平台演示报价：2 周交付首版模型。' }),
+      });
+      showToast('报价已提交');
+    }
+    if (button.dataset.action === 'accept-proposal') {
+      await fetchJson(`/api/platform/v1/custom-requests/${button.dataset.requestId}/proposals/${button.dataset.proposalId}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      showToast('报价已接受，需求进入交付');
+    }
     await refreshOverview();
-    showToast('报价已提交');
   } catch (error) {
     showToast(error.message);
   }

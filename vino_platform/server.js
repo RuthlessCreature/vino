@@ -9,10 +9,13 @@ const PORT = Number(process.env.PORT || 8797);
 const ROOT = __dirname;
 const REPO_ROOT = path.resolve(ROOT, '..');
 const PUBLIC_ROOT = path.join(ROOT, 'public');
-const DATA_ROOT = path.join(ROOT, 'data');
-const STATE_PATH = path.join(DATA_ROOT, 'state.json');
-const INGEST_ASSET_ROOT = path.join(DATA_ROOT, 'assets');
-const MODELS_ROOT = path.join(REPO_ROOT, 'models');
+const DATA_ROOT = path.resolve(process.env.VINO_DATA_ROOT || path.join(ROOT, 'data'));
+const STATE_PATH = path.resolve(process.env.VINO_STATE_PATH || path.join(DATA_ROOT, 'state.json'));
+const INGEST_ASSET_ROOT = path.resolve(process.env.VINO_INGEST_ASSET_ROOT || path.join(DATA_ROOT, 'assets'));
+const MODEL_UPLOAD_ROOT = path.resolve(process.env.VINO_MODEL_UPLOAD_ROOT || path.join(DATA_ROOT, 'model-builds'));
+const MODELS_ROOT = path.resolve(process.env.VINO_MODELS_ROOT || path.join(REPO_ROOT, 'models'));
+const SKIP_MODEL_DISCOVERY = process.env.VINO_SKIP_MODEL_DISCOVERY === '1';
+const PASSWORD_HASH_ITERATIONS = 120000;
 const ARCHIVE_CACHE = new Map();
 const ENCRYPTION_ENVELOPE_MAGIC = Buffer.from('VINOENC1', 'utf8');
 const BUNDLE_ARCHIVE_MAGIC = Buffer.from('VINOAR01', 'utf8');
@@ -30,12 +33,39 @@ function shortHash(value) {
   return crypto.createHash('sha1').update(String(value)).digest('hex').slice(0, 12);
 }
 
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return {
+    passwordSalt: salt,
+    passwordHash: crypto.pbkdf2Sync(String(password), salt, PASSWORD_HASH_ITERATIONS, 32, 'sha256').toString('hex'),
+    passwordAlgorithm: `pbkdf2-sha256:${PASSWORD_HASH_ITERATIONS}`,
+  };
+}
+
+function setUserPassword(user, password) {
+  Object.assign(user, hashPassword(password));
+  delete user.password;
+}
+
+function verifyPassword(user, password) {
+  if (user.passwordHash && user.passwordSalt) {
+    const expected = Buffer.from(user.passwordHash, 'hex');
+    const actual = Buffer.from(hashPassword(password, user.passwordSalt).passwordHash, 'hex');
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  }
+  return typeof user.password === 'string' && user.password === String(password);
+}
+
 function slugify(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'model';
+}
+
+function safeFileName(value, fallback = 'upload.bin') {
+  const raw = path.basename(String(value || fallback)).replace(/[^a-zA-Z0-9._-]/g, '-');
+  return raw || fallback;
 }
 
 function normalizeTimestamp(value) {
@@ -96,6 +126,7 @@ function normalizePathname(requestUrl) {
 async function ensureDirs() {
   await fs.mkdir(DATA_ROOT, { recursive: true });
   await fs.mkdir(INGEST_ASSET_ROOT, { recursive: true });
+  await fs.mkdir(MODEL_UPLOAD_ROOT, { recursive: true });
 }
 
 async function readBody(req, limitBytes = 200 * 1024 * 1024) {
@@ -313,7 +344,7 @@ function requiredString(body, key, label = key) {
 }
 
 async function discoverCoreMLBuilds() {
-  if (!fsSync.existsSync(MODELS_ROOT)) {
+  if (SKIP_MODEL_DISCOVERY || !fsSync.existsSync(MODELS_ROOT)) {
     return [];
   }
 
@@ -566,6 +597,19 @@ function ensureBaselineRecords(state) {
   };
 }
 
+function migrateUserPasswords(state) {
+  for (const user of state.users || []) {
+    if (!user.passwordHash && typeof user.password === 'string') {
+      setUserPassword(user, user.password);
+      user.updatedAt = user.updatedAt || isoNow();
+      continue;
+    }
+    if (user.passwordHash && Object.prototype.hasOwnProperty.call(user, 'password')) {
+      delete user.password;
+    }
+  }
+}
+
 function normalizeState(state) {
   const normalized = { ...seedState(), ...state };
   normalized.organizations = Array.isArray(state.organizations) ? state.organizations : seedState().organizations;
@@ -605,6 +649,7 @@ function normalizeState(state) {
     stats: Array.isArray(state.ingests?.stats) ? state.ingests.stats : [],
   };
   ensureBaselineRecords(normalized);
+  migrateUserPasswords(normalized);
   return normalized;
 }
 
@@ -695,6 +740,7 @@ async function readState() {
     state = normalizeState(JSON.parse(await fs.readFile(STATE_PATH, 'utf8')));
   }
   await mergeDiscoveredModels(state);
+  migrateUserPasswords(state);
   await writeState(state);
   return state;
 }
@@ -889,6 +935,34 @@ function upsertDevice(state, session, deviceId, deviceName, platform) {
   return device;
 }
 
+function findDeviceByBinding(state, organizationId, deviceBindingId) {
+  return state.devices.find((item) => item.organizationId === organizationId && item.deviceBindingId === deviceBindingId) || null;
+}
+
+function ensureDeviceCanUseEntitlement(state, entitlement, deviceId) {
+  if (!entitlement) {
+    fail(403, 'entitlement_not_found', 'model is not assigned to current user');
+  }
+  if (entitlement.assignedToType === 'device' && entitlement.assignedToId !== deviceId) {
+    fail(403, 'device_mismatch', 'license is assigned to another device');
+  }
+  if (entitlement.deviceBindingRequired === false) {
+    return;
+  }
+  const activeDeviceIds = new Set(
+    state.leases
+      .filter((lease) => lease.entitlementId === entitlement.entitlementId && lease.status === 'active')
+      .map((lease) => lease.deviceId)
+  );
+  if (activeDeviceIds.has(deviceId)) {
+    return;
+  }
+  const maxDevices = Number(entitlement.maxDevices || 1);
+  if (activeDeviceIds.size >= maxDevices) {
+    fail(403, 'device_limit_reached', 'license device limit reached');
+  }
+}
+
 function upsertLease(state, entitlement, session, deviceId) {
   const leaseExpiresAt = resolveLeaseExpiry(entitlement);
   let lease = findLease(state, entitlement, session, deviceId);
@@ -978,7 +1052,9 @@ async function getModelArtifact(build) {
     return cached;
   }
 
-  const sourceAbsolute = path.join(REPO_ROOT, build.sourcePath);
+  const sourceAbsolute = path.isAbsolute(build.sourcePath)
+    ? build.sourcePath
+    : path.join(REPO_ROOT, build.sourcePath);
   const stats = await fs.stat(sourceAbsolute);
   const bytes = stats.isDirectory() || build.transportFormat === 'bundle-archive'
     ? buildBundleArchive(await collectArchiveEntries(sourceAbsolute))
@@ -1424,6 +1500,125 @@ function createTrialEntitlement(state, session, model, days) {
   return entitlement;
 }
 
+function ensureDefaultSkuForModel(state, model, actor) {
+  let sku = state.modelSkus.find((item) => item.modelId === model.modelId && item.status === 'active');
+  if (sku) {
+    return sku;
+  }
+  sku = {
+    skuId: `sku-${model.modelId}-annual`,
+    modelId: model.modelId,
+    buildId: model.currentBuildId || null,
+    name: 'Annual device-bound license',
+    licenseType: 'subscription',
+    priceAmount: 9800,
+    currency: 'CNY',
+    durationDays: 365,
+    maxDevices: 3,
+    offlineLeaseDays: state.platformSettings.defaultOfflineLeaseDays || 30,
+    status: 'active',
+    createdAt: isoNow(),
+    updatedAt: isoNow(),
+  };
+  state.modelSkus.push(sku);
+  audit(state, actor, 'sku.default_create', 'model_sku', sku.skuId, { modelId: model.modelId });
+  return sku;
+}
+
+function buildAccessScopeForOrder(state, session, order) {
+  if (!order) {
+    return false;
+  }
+  if (['super_admin', 'admin', 'platform_ops', 'finance'].includes(session.role)) {
+    return true;
+  }
+  if (['buyer_admin', 'buyer_operator'].includes(session.role)) {
+    return order.buyerOrganizationId === session.organizationId;
+  }
+  if (session.role === 'developer_admin') {
+    const developer = getDeveloperForSession(state, session);
+    if (!developer) {
+      return false;
+    }
+    const ownModelIds = new Set(state.models.filter((model) => model.developerId === developer.developerId).map((model) => model.modelId));
+    return order.items.some((item) => ownModelIds.has(item.modelId));
+  }
+  return false;
+}
+
+function ensureOrderPaymentSucceeded(state, order, actor, paymentPayload = {}) {
+  if (['paid', 'delivering', 'completed'].includes(order.status)) {
+    return {
+      order,
+      payment: state.payments.find((item) => item.orderId === order.orderId && item.status === 'succeeded') || null,
+      entitlements: state.entitlements.filter((item) => item.sourceOrderItemId && order.items.some((oi) => oi.orderItemId === item.sourceOrderItemId)),
+      settlements: state.settlements.filter((item) => item.orderId === order.orderId),
+    };
+  }
+  order.status = 'paid';
+  order.paidAt = isoNow();
+  order.updatedAt = isoNow();
+  const payment = {
+    paymentId: paymentPayload.paymentId || `pay-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+    orderId: order.orderId,
+    provider: paymentPayload.provider || 'manual',
+    status: 'succeeded',
+    amount: money(paymentPayload.amount ?? order.totalAmount),
+    providerTradeNo: paymentPayload.providerTradeNo || `manual-${shortHash(order.orderId)}`,
+    idempotencyKey: paymentPayload.idempotencyKey || `manual-${order.orderId}`,
+    rawPayload: paymentPayload.rawPayload || undefined,
+    createdAt: isoNow(),
+  };
+  state.payments.push(payment);
+  const entitlements = order.items.map((item) => createEntitlementFromOrderItem(state, order, item, actor));
+  const settlements = createSettlementEntriesForOrder(state, order, actor);
+  audit(state, actor, 'order.confirm_payment', 'order', order.orderId, { paymentId: payment.paymentId });
+  return { order, payment, entitlements, settlements };
+}
+
+async function createUploadedBuild(state, session, model, body) {
+  const fileName = safeFileName(requiredString(body, 'fileName'));
+  const contentBase64 = requiredString(body, 'contentBase64', 'contentBase64');
+  const bytes = Buffer.from(contentBase64, 'base64');
+  if (bytes.length === 0) {
+    fail(422, 'empty_model_file', 'model file is empty');
+  }
+  const extension = path.extname(fileName).toLowerCase();
+  const allowedExtensions = new Set(['.mlmodel', '.mlpackage', '.mlmodelc', '.zip', '.bin']);
+  if (!allowedExtensions.has(extension)) {
+    fail(422, 'unsupported_model_format', 'model file must be CoreML or an archived bundle');
+  }
+  const uploadId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const storedName = `${model.modelId}-${uploadId}-${fileName}`;
+  const storedPath = path.join(MODEL_UPLOAD_ROOT, storedName);
+  await fs.writeFile(storedPath, bytes);
+  const sourceFormat = String(body.sourceFormat || extension.replace('.', '') || 'binary').replace(/[^a-zA-Z0-9_-]/g, '');
+  const build = {
+    modelBuildId: `build-${uploadId}`,
+    modelId: model.modelId,
+    version: String(body.version || model.version || '1.0.0'),
+    buildNumber: String(body.buildNumber || shortHash(`${storedName}:${bytes.length}`)),
+    platform: body.platform || 'ios',
+    sourcePath: path.relative(REPO_ROOT, storedPath).split(path.sep).join('/'),
+    objectKey: path.relative(DATA_ROOT, storedPath).split(path.sep).join('/'),
+    fileName,
+    sourceFormat,
+    transportFormat: body.transportFormat || (extension === '.mlpackage' || extension === '.mlmodelc' ? 'bundle-archive' : 'raw-file'),
+    supportedPlatforms: Array.isArray(body.supportedPlatforms) ? body.supportedPlatforms : ['ios'],
+    isEncrypted: body.isEncrypted !== false,
+    status: 'ready',
+    byteCount: bytes.length,
+    sha256: hashHex(bytes),
+    createdAt: isoNow(),
+  };
+  state.modelBuilds.push(build);
+  model.currentBuildId = build.modelBuildId;
+  model.status = ['listed', 'in_review'].includes(model.status) ? 'in_review' : (model.status || 'draft');
+  model.updatedAt = isoNow();
+  audit(state, session, 'model_build.upload', 'model_build', build.modelBuildId, { modelId: model.modelId, byteCount: build.byteCount });
+  return build;
+}
+
 function createSettlementEntriesForOrder(state, order, actor) {
   const created = [];
   for (const item of order.items || []) {
@@ -1481,7 +1676,8 @@ function revokeOrderEntitlements(state, order, actor, reason) {
 async function handleLogin(state, req, res) {
   const body = parseJsonBuffer(await readBody(req));
   const loginId = String(body.email || body.account || body.username || '').trim().toLowerCase();
-  const user = state.users.find((item) => item.email.toLowerCase() === loginId && item.password === body.password && item.status !== 'disabled');
+  const password = String(body.password || '').trim();
+  const user = state.users.find((item) => item.email.toLowerCase() === loginId && item.status !== 'disabled' && verifyPassword(item, password));
   if (!user) {
     sendJson(res, 401, { error: { code: 'invalid_credentials', message: 'invalid credentials' } });
     return;
@@ -1606,6 +1802,66 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/organizations\/[^/]+$/.test(pathname)) {
+    const session = requireSession(state, req);
+    const organizationId = pathname.split('/')[5];
+    if (!isPlatformAdminRole(session.role) && session.organizationId !== organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    const organization = state.organizations.find((item) => item.organizationId === organizationId);
+    if (!organization) {
+      fail(404, 'organization_not_found', 'organization not found');
+    }
+    sendJson(res, 200, { organization });
+    return;
+  }
+
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/organizations\/[^/]+\/users$/.test(pathname)) {
+    const session = requireSession(state, req);
+    const organizationId = pathname.split('/')[5];
+    if (!isPlatformAdminRole(session.role) && session.organizationId !== organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    sendJson(res, 200, {
+      users: state.users.filter((user) => user.organizationId === organizationId).map(publicUser),
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/organizations\/[^/]+\/users$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'buyer_admin']);
+    const organizationId = pathname.split('/')[5];
+    if (!isPlatformAdminRole(actor.role) && actor.organizationId !== organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    const body = parseJsonBuffer(await readBody(req));
+    body.organizationId = organizationId;
+    const organization = state.organizations.find((item) => item.organizationId === organizationId);
+    if (!organization) {
+      fail(404, 'organization_not_found', 'organization not found');
+    }
+    const email = requiredString(body, 'email').toLowerCase();
+    const duplicate = state.users.find((item) => item.email === email);
+    if (duplicate) {
+      fail(409, 'email_exists', 'email already exists');
+    }
+    const user = {
+      userId: `user-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      email,
+      displayName: requiredString(body, 'displayName'),
+      organizationId,
+      organizationName: organization.name,
+      role: body.role || 'buyer_operator',
+      status: body.status || 'active',
+    };
+    setUserPassword(user, body.password || 'demo123');
+    state.users.push(user);
+    audit(state, actor, 'user.create', 'user', user.userId, { organizationId });
+    await writeState(state);
+    sendJson(res, 201, { ok: true, user: publicUser(user) });
+    return;
+  }
+
   if (req.method === 'GET' && (pathname === '/api/platform/v1/admin/overview' || pathname === '/api/cloud/v1/admin/overview' || pathname === '/api/cloud/v1/overview')) {
     const session = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
     sendJson(res, 200, await buildRoleOverview(state, session));
@@ -1703,6 +1959,75 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && pathname === '/api/platform/v1/developers') {
+    const session = requireAnyRole(state, req, ['developer_admin', 'super_admin', 'admin', 'platform_ops']);
+    const body = parseJsonBuffer(await readBody(req));
+    const organizationId = isPlatformAdminRole(session.role) && body.organizationId ? body.organizationId : session.organizationId;
+    let developer = state.developers.find((item) => item.organizationId === organizationId);
+    if (!developer) {
+      developer = {
+        developerId: `dev-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+        organizationId,
+        createdAt: isoNow(),
+      };
+      state.developers.push(developer);
+    }
+    Object.assign(developer, {
+      displayName: body.displayName || developer.displayName || session.organizationName,
+      type: body.type || developer.type || 'company',
+      verificationStatus: body.submit ? 'submitted' : developer.verificationStatus || 'draft',
+      agreementSignedAt: body.agreementSigned ? isoNow() : developer.agreementSignedAt || null,
+      updatedAt: isoNow(),
+    });
+    audit(state, session, 'developer.upsert', 'developer', developer.developerId, {});
+    await writeState(state);
+    sendJson(res, 200, { ok: true, developer });
+    return;
+  }
+
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/developers\/[^/]+$/.test(pathname)) {
+    const session = requireSession(state, req);
+    const developerId = pathname.split('/')[5];
+    const developer = state.developers.find((item) => item.developerId === developerId);
+    if (!developer) {
+      fail(404, 'developer_not_found', 'developer not found');
+    }
+    if (!isPlatformAdminRole(session.role) && session.role !== 'reviewer' && developer.organizationId !== session.organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    sendJson(res, 200, { developer });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/developers\/[^/]+\/qualifications$/.test(pathname)) {
+    const session = requireAnyRole(state, req, ['developer_admin', 'super_admin', 'admin', 'platform_ops', 'reviewer']);
+    const developerId = pathname.split('/')[5];
+    const body = parseJsonBuffer(await readBody(req));
+    const developer = state.developers.find((item) => item.developerId === developerId);
+    if (!developer) {
+      fail(404, 'developer_not_found', 'developer not found');
+    }
+    if (!isPlatformAdminRole(session.role) && session.role !== 'reviewer' && developer.organizationId !== session.organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    const qualification = {
+      qualificationId: `qual-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      kind: body.kind || 'copyright',
+      fileName: safeFileName(body.fileName || `${body.kind || 'qualification'}.txt`),
+      note: body.note || '',
+      status: isPlatformAdminRole(session.role) || session.role === 'reviewer' ? (body.status || 'approved') : 'pending',
+      reviewerId: isPlatformAdminRole(session.role) || session.role === 'reviewer' ? session.userId : null,
+      createdAt: isoNow(),
+    };
+    developer.qualifications = Array.isArray(developer.qualifications) ? developer.qualifications : [];
+    developer.qualifications.push(qualification);
+    developer.updatedAt = isoNow();
+    audit(state, session, 'developer.qualification.add', 'developer', developer.developerId, { kind: qualification.kind });
+    await writeState(state);
+    sendJson(res, 201, { ok: true, developer, qualification });
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/platform/v1/developer/profile') {
     const session = requireAnyRole(state, req, ['developer_admin']);
     const body = parseJsonBuffer(await readBody(req));
@@ -1774,6 +2099,52 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'PATCH' && /^\/api\/platform\/v1\/developer\/models\/[^/]+$/.test(pathname)) {
+    const session = requireAnyRole(state, req, ['developer_admin']);
+    const modelId = pathname.split('/')[6];
+    const body = parseJsonBuffer(await readBody(req));
+    const model = getModel(state, modelId);
+    if (!model) {
+      fail(404, 'model_not_found', 'model not found');
+    }
+    if (!developerOwnsModel(state, session, modelId)) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    if (body.name) model.name = String(body.name).trim();
+    if (body.slug || body.name) model.slug = slugify(body.slug || model.name);
+    if (body.category) model.category = body.category;
+    if (body.summary !== undefined) model.summary = String(body.summary || '');
+    if (body.description !== undefined) model.description = String(body.description || '');
+    if (body.tags !== undefined) {
+      model.tags = Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(',').map((item) => item.trim()).filter(Boolean);
+    }
+    if (['listed', 'approved'].includes(model.status)) {
+      model.status = 'in_review';
+    }
+    model.updatedAt = isoNow();
+    audit(state, session, 'developer.model.update', 'model', model.modelId, {});
+    await writeState(state);
+    sendJson(res, 200, { ok: true, model });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/developer\/models\/[^/]+\/builds$/.test(pathname)) {
+    const session = requireAnyRole(state, req, ['developer_admin']);
+    const modelId = pathname.split('/')[6];
+    const body = parseJsonBuffer(await readBody(req));
+    const model = getModel(state, modelId);
+    if (!model) {
+      fail(404, 'model_not_found', 'model not found');
+    }
+    if (!developerOwnsModel(state, session, modelId)) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    const build = await createUploadedBuild(state, session, model, body);
+    await writeState(state);
+    sendJson(res, 201, { ok: true, model, build });
+    return;
+  }
+
   if (req.method === 'POST' && /^\/api\/platform\/v1\/developer\/models\/[^/]+\/submit-review$/.test(pathname)) {
     const session = requireAnyRole(state, req, ['developer_admin']);
     const modelId = pathname.split('/')[6];
@@ -1838,13 +2209,13 @@ async function handleRoute(req, res) {
       user = {
         userId: `user-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
         email,
-        password: String(body.password || 'demo123'),
         displayName,
         organizationId,
         organizationName: organization.name,
         role: body.role || 'buyer_operator',
         status: body.status || 'active',
       };
+      setUserPassword(user, body.password || 'demo123');
       state.users.push(user);
       audit(state, actor, 'user.create', 'user', user.userId, {});
     } else {
@@ -1855,10 +2226,42 @@ async function handleRoute(req, res) {
       user.role = body.role || user.role;
       user.status = body.status || user.status || 'active';
       if (body.password) {
-        user.password = String(body.password);
+        setUserPassword(user, body.password);
       }
       audit(state, actor, 'user.update', 'user', user.userId, {});
     }
+    await writeState(state);
+    sendJson(res, 200, { ok: true, user: publicUser(user) });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/platform\/v1\/users\/[^/]+$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'buyer_admin']);
+    const userId = pathname.split('/')[5];
+    const body = parseJsonBuffer(await readBody(req));
+    const user = state.users.find((item) => item.userId === userId);
+    if (!user) {
+      fail(404, 'user_not_found', 'user not found');
+    }
+    if (!isPlatformAdminRole(actor.role) && actor.organizationId !== user.organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    if (body.email) {
+      const email = String(body.email).trim().toLowerCase();
+      const duplicate = state.users.find((item) => item.email === email && item.userId !== user.userId);
+      if (duplicate) {
+        fail(409, 'email_exists', 'email already exists');
+      }
+      user.email = email;
+    }
+    if (body.displayName !== undefined) user.displayName = String(body.displayName || user.displayName);
+    if (body.password) setUserPassword(user, body.password);
+    if (body.role && (isPlatformAdminRole(actor.role) || !['super_admin', 'admin', 'platform_ops', 'reviewer', 'finance'].includes(body.role))) {
+      user.role = body.role;
+    }
+    if (body.status) user.status = body.status;
+    user.updatedAt = isoNow();
+    audit(state, actor, 'user.update', 'user', user.userId, { status: user.status, role: user.role });
     await writeState(state);
     sendJson(res, 200, { ok: true, user: publicUser(user) });
     return;
@@ -1872,10 +2275,14 @@ async function handleRoute(req, res) {
     if (!model) {
       fail(404, 'model_not_found', 'model not found');
     }
-    let sku = body.skuId ? state.modelSkus.find((item) => item.skuId === body.skuId) : null;
+    let sku = body.skuId
+      ? state.modelSkus.find((item) => item.skuId === body.skuId)
+      : body.defaultSku
+        ? state.modelSkus.find((item) => item.skuId === `sku-${modelId}-annual` || item.modelId === modelId)
+        : null;
     if (!sku) {
       sku = {
-        skuId: `sku-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+        skuId: body.defaultSku ? `sku-${modelId}-annual` : `sku-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
         createdAt: isoNow(),
       };
       state.modelSkus.push(sku);
@@ -1899,9 +2306,29 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/model-skus\/[^/]+$/.test(pathname)) {
+    requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'buyer_admin', 'buyer_operator', 'developer_admin']);
+    const skuId = pathname.split('/')[5];
+    const sku = getSku(state, skuId);
+    if (!sku) {
+      fail(404, 'sku_not_found', 'sku not found');
+    }
+    const model = getModel(state, sku.modelId);
+    sendJson(res, 200, { sku, model: model ? publicModel(state, model) : null });
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/platform/v1/orders') {
     const session = requireAnyRole(state, req, ['buyer_admin', 'super_admin', 'platform_ops', 'admin']);
     const body = parseJsonBuffer(await readBody(req));
+    const idempotencyKey = String(req.headers['idempotency-key'] || body.idempotencyKey || '').trim();
+    if (idempotencyKey) {
+      const existing = state.orders.find((item) => item.idempotencyKey === idempotencyKey && item.buyerUserId === session.userId);
+      if (existing) {
+        sendJson(res, 200, { ok: true, order: existing, replayed: true });
+        return;
+      }
+    }
     const buyerOrganizationId = isPlatformAdminRole(session.role)
       ? body.buyerOrganizationId || state.organizations.find((item) => item.type === 'buyer')?.organizationId || session.organizationId
       : session.organizationId;
@@ -1954,6 +2381,7 @@ async function handleRoute(req, res) {
       totalAmount: money(totalAmount),
       currency: body.currency || 'CNY',
       paymentMode: body.paymentMode || 'offline_transfer',
+      idempotencyKey: idempotencyKey || null,
       items: orderItems,
       createdAt: isoNow(),
       updatedAt: isoNow(),
@@ -1968,6 +2396,25 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/orders\/[^/]+$/.test(pathname)) {
+    const session = requireSession(state, req);
+    const orderId = pathname.split('/')[5];
+    const order = state.orders.find((item) => item.orderId === orderId);
+    if (!order) {
+      fail(404, 'order_not_found', 'order not found');
+    }
+    if (!buildAccessScopeForOrder(state, session, order)) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    sendJson(res, 200, {
+      order,
+      payments: state.payments.filter((payment) => payment.orderId === order.orderId),
+      entitlements: state.entitlements.filter((item) => item.sourceOrderItemId && order.items.some((oi) => oi.orderItemId === item.sourceOrderItemId)),
+      settlements: state.settlements.filter((settlement) => settlement.orderId === order.orderId),
+    });
+    return;
+  }
+
   if (req.method === 'POST' && /^\/api\/platform\/v1\/admin\/orders\/[^/]+\/confirm-payment$/.test(pathname)) {
     const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'finance']);
     const body = parseJsonBuffer(await readBody(req));
@@ -1976,29 +2423,74 @@ async function handleRoute(req, res) {
     if (!order) {
       fail(404, 'order_not_found', 'order not found');
     }
-    if (['paid', 'delivering', 'completed'].includes(order.status)) {
-      sendJson(res, 200, { ok: true, order, entitlements: state.entitlements.filter((item) => item.sourceOrderItemId && order.items.some((oi) => oi.orderItemId === item.sourceOrderItemId)) });
+    const idempotencyKey = String(req.headers['idempotency-key'] || body.idempotencyKey || `manual-${orderId}`).trim();
+    const existingPayment = state.payments.find((payment) => payment.idempotencyKey === idempotencyKey);
+    if (existingPayment) {
+      sendJson(res, 200, {
+        ok: true,
+        order,
+        payment: existingPayment,
+        entitlements: state.entitlements.filter((item) => item.sourceOrderItemId && order.items.some((oi) => oi.orderItemId === item.sourceOrderItemId)),
+        settlements: state.settlements.filter((settlement) => settlement.orderId === orderId),
+        replayed: true,
+      });
       return;
     }
-    order.status = 'paid';
-    order.paidAt = isoNow();
-    order.updatedAt = isoNow();
-    const payment = {
-      paymentId: `pay-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
-      orderId,
+    const result = ensureOrderPaymentSucceeded(state, order, actor, {
       provider: body.provider || 'manual',
-      status: 'succeeded',
-      amount: order.totalAmount,
       providerTradeNo: body.providerTradeNo || `manual-${shortHash(orderId)}`,
-      idempotencyKey: req.headers['idempotency-key'] || body.idempotencyKey || `manual-${orderId}`,
-      createdAt: isoNow(),
-    };
-    state.payments.push(payment);
-    const entitlements = order.items.map((item) => createEntitlementFromOrderItem(state, order, item, actor));
-    const settlements = createSettlementEntriesForOrder(state, order, actor);
-    audit(state, actor, 'order.confirm_payment', 'order', orderId, { paymentId: payment.paymentId });
+      idempotencyKey,
+      amount: order.totalAmount,
+    });
     await writeState(state);
-    sendJson(res, 200, { ok: true, order, payment, entitlements, settlements });
+    sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/payments\/webhooks\/[^/]+$/.test(pathname)) {
+    const body = parseJsonBuffer(await readBody(req));
+    const provider = pathname.split('/')[6];
+    const idempotencyKey = String(req.headers['idempotency-key'] || body.idempotencyKey || body.providerTradeNo || '').trim();
+    if (!idempotencyKey) {
+      fail(422, 'idempotency_key_required', 'payment webhook requires idempotency key');
+    }
+    const existingPayment = state.payments.find((payment) => payment.idempotencyKey === idempotencyKey);
+    if (existingPayment) {
+      sendJson(res, 200, { ok: true, payment: existingPayment, replayed: true });
+      return;
+    }
+    const order = state.orders.find((item) => item.orderId === body.orderId);
+    if (!order) {
+      fail(404, 'order_not_found', 'order not found');
+    }
+    if (!['succeeded', 'success', 'paid'].includes(String(body.status || '').toLowerCase())) {
+      const payment = {
+        paymentId: `pay-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+        orderId: order.orderId,
+        provider,
+        status: 'failed',
+        amount: money(body.amount || order.totalAmount),
+        providerTradeNo: body.providerTradeNo || idempotencyKey,
+        idempotencyKey,
+        rawPayload: body,
+        createdAt: isoNow(),
+      };
+      state.payments.push(payment);
+      audit(state, null, 'payment.webhook_failed', 'payment', payment.paymentId, { orderId: order.orderId });
+      await writeState(state);
+      sendJson(res, 200, { ok: true, payment });
+      return;
+    }
+    const result = ensureOrderPaymentSucceeded(state, order, null, {
+      provider,
+      providerTradeNo: body.providerTradeNo || idempotencyKey,
+      idempotencyKey,
+      amount: body.amount || order.totalAmount,
+      rawPayload: body,
+    });
+    audit(state, null, 'payment.webhook_succeeded', 'order', order.orderId, { provider });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, ...result });
     return;
   }
 
@@ -2051,7 +2543,11 @@ async function handleRoute(req, res) {
     const assignedToType = ['organization', 'user', 'device'].includes(body.assignedToType) ? body.assignedToType : 'user';
     const assignedToId = requiredString(body, 'assignedToId');
     const organizationId = body.organizationId
-      || (assignedToType === 'user' ? state.users.find((item) => item.userId === assignedToId)?.organizationId : assignedToId)
+      || (assignedToType === 'user'
+        ? state.users.find((item) => item.userId === assignedToId)?.organizationId
+        : assignedToType === 'device'
+          ? state.devices.find((item) => item.deviceBindingId === assignedToId || item.deviceId === assignedToId)?.organizationId
+          : assignedToId)
       || 'org-demo-001';
     let entitlement = body.entitlementId ? state.entitlements.find((item) => item.entitlementId === body.entitlementId) : null;
     if (!entitlement) {
@@ -2106,6 +2602,43 @@ async function handleRoute(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/admin\/entitlements\/[^/]+\/assign$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    const entitlementId = pathname.split('/')[6];
+    const body = parseJsonBuffer(await readBody(req));
+    const entitlement = state.entitlements.find((item) => item.entitlementId === entitlementId);
+    if (!entitlement) {
+      fail(404, 'entitlement_not_found', 'entitlement not found');
+    }
+    const assignedToType = ['organization', 'user', 'device'].includes(body.assignedToType) ? body.assignedToType : entitlement.assignedToType;
+    const assignedToId = requiredString(body, 'assignedToId');
+    let organizationId = body.organizationId || entitlement.organizationId;
+    if (assignedToType === 'user') {
+      const user = state.users.find((item) => item.userId === assignedToId);
+      if (!user) {
+        fail(404, 'user_not_found', 'user not found');
+      }
+      organizationId = user.organizationId;
+    }
+    if (assignedToType === 'organization' && !state.organizations.some((item) => item.organizationId === assignedToId)) {
+      fail(404, 'organization_not_found', 'organization not found');
+    }
+    entitlement.assignedToType = assignedToType;
+    entitlement.assignedToId = assignedToId;
+    entitlement.organizationId = organizationId;
+    entitlement.updatedAt = isoNow();
+    audit(state, actor, 'entitlement.assign', 'entitlement', entitlementId, { assignedToType, assignedToId });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, entitlement });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/v1/admin/entitlements') {
+    requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    sendJson(res, 200, { entitlements: (await buildOverview(state)).entitlements });
+    return;
+  }
+
   if (req.method === 'POST' && /^\/api\/cloud\/v1\/admin\/entitlements\/[^/]+\/delete$/.test(pathname)) {
     const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
     const entitlementId = pathname.split('/')[6];
@@ -2132,6 +2665,7 @@ async function handleRoute(req, res) {
     model.status = body.decision === 'reject' ? 'rejected' : body.status || 'listed';
     model.reviewNote = body.note || '';
     model.updatedAt = isoNow();
+    const sku = model.status === 'listed' ? ensureDefaultSkuForModel(state, model, actor) : null;
     const review = {
       reviewId: `review-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
       subjectType: 'model',
@@ -2144,7 +2678,72 @@ async function handleRoute(req, res) {
     state.reviews.push(review);
     audit(state, actor, 'model.review', 'model', modelId, { status: model.status });
     await writeState(state);
-    sendJson(res, 200, { ok: true, model, review });
+    sendJson(res, 200, { ok: true, model, review, sku });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/admin\/models\/[^/]+\/publish$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'reviewer']);
+    const modelId = pathname.split('/')[6];
+    const model = getModel(state, modelId);
+    if (!model) {
+      fail(404, 'model_not_found', 'model not found');
+    }
+    model.status = 'listed';
+    model.updatedAt = isoNow();
+    const sku = ensureDefaultSkuForModel(state, model, actor);
+    audit(state, actor, 'model.publish', 'model', modelId, { skuId: sku.skuId });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, model, sku });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/admin\/models\/[^/]+\/delist$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'reviewer']);
+    const modelId = pathname.split('/')[6];
+    const model = getModel(state, modelId);
+    if (!model) {
+      fail(404, 'model_not_found', 'model not found');
+    }
+    model.status = 'delisted';
+    model.delistReason = parseJsonBuffer(await readBody(req)).reason || '';
+    model.updatedAt = isoNow();
+    audit(state, actor, 'model.delist', 'model', modelId, { reason: model.delistReason });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, model });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/v1/devices') {
+    const session = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'buyer_admin', 'buyer_operator']);
+    const devices = isPlatformAdminRole(session.role)
+      ? state.devices
+      : state.devices.filter((device) => device.organizationId === session.organizationId);
+    sendJson(res, 200, { devices });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/admin\/devices\/[^/]+\/block$/.test(pathname)) {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    const deviceId = pathname.split('/')[6];
+    const body = parseJsonBuffer(await readBody(req));
+    const device = state.devices.find((item) => item.deviceId === deviceId || item.deviceBindingId === deviceId);
+    if (!device) {
+      fail(404, 'device_not_found', 'device not found');
+    }
+    device.status = body.block === false ? 'active' : 'blocked';
+    device.blockReason = body.reason || device.blockReason || '';
+    device.updatedAt = isoNow();
+    if (device.status === 'blocked') {
+      state.leases
+        .filter((lease) => lease.deviceId === device.deviceBindingId || lease.deviceId === device.deviceId)
+        .forEach((lease) => {
+          lease.status = 'revoked';
+        });
+    }
+    audit(state, actor, device.status === 'blocked' ? 'device.block' : 'device.unblock', 'device', device.deviceId, { reason: device.blockReason });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, device });
     return;
   }
 
@@ -2253,6 +2852,34 @@ async function handleRoute(req, res) {
     request.status = 'proposal_submitted';
     request.updatedAt = isoNow();
     audit(state, session, 'custom_request.proposal', 'custom_request', requestId, { proposalId: proposal.proposalId });
+    await writeState(state);
+    sendJson(res, 200, { ok: true, request, proposal });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/platform\/v1\/custom-requests\/[^/]+\/proposals\/[^/]+\/accept$/.test(pathname)) {
+    const session = requireAnyRole(state, req, ['buyer_admin', 'super_admin', 'platform_ops', 'admin']);
+    const parts = pathname.split('/');
+    const requestId = parts[5];
+    const proposalId = parts[7];
+    const request = state.customRequests.find((item) => item.customRequestId === requestId);
+    if (!request) {
+      fail(404, 'custom_request_not_found', 'custom request not found');
+    }
+    if (!isPlatformAdminRole(session.role) && request.organizationId !== session.organizationId) {
+      fail(403, 'forbidden', 'forbidden');
+    }
+    const proposal = request.proposals.find((item) => item.proposalId === proposalId);
+    if (!proposal) {
+      fail(404, 'proposal_not_found', 'proposal not found');
+    }
+    request.proposals.forEach((item) => {
+      item.status = item.proposalId === proposalId ? 'accepted' : 'declined';
+    });
+    request.status = 'in_delivery';
+    request.acceptedProposalId = proposalId;
+    request.updatedAt = isoNow();
+    audit(state, session, 'custom_request.accept_proposal', 'custom_request', requestId, { proposalId });
     await writeState(state);
     sendJson(res, 200, { ok: true, request, proposal });
     return;
@@ -2490,7 +3117,11 @@ async function handleRoute(req, res) {
     build.sha256 = artifact.sha256;
     build.byteCount = artifact.byteCount;
     const deviceId = String(body.deviceId || session.deviceId || 'unknown-device');
-    upsertDevice(state, session, deviceId, body.deviceName || session.deviceName, session.platform);
+    const device = upsertDevice(state, session, deviceId, body.deviceName || session.deviceName, session.platform);
+    if (device.status === 'blocked') {
+      fail(403, 'device_blocked', 'device is blocked');
+    }
+    ensureDeviceCanUseEntitlement(state, entitlement, deviceId);
     const lease = upsertLease(state, entitlement, session, deviceId);
     const ticket = {
       ticketId: crypto.randomUUID().replace(/-/g, ''),
@@ -2546,6 +3177,10 @@ async function handleRoute(req, res) {
     if (!ticket || ticket.status === 'revoked' || new Date(ticket.expiresAt).getTime() <= Date.now()) {
       fail(404, 'download_ticket_expired', 'download ticket expired');
     }
+    const device = findDeviceByBinding(state, ticket.organizationId, ticket.deviceId);
+    if (device?.status === 'blocked') {
+      fail(403, 'device_blocked', 'device is blocked');
+    }
     const model = getModel(state, ticket.modelId);
     const build = model ? getBuildForModel(state, model) : null;
     if (!model || !build) {
@@ -2572,7 +3207,11 @@ async function handleRoute(req, res) {
       fail(403, 'entitlement_expired', 'entitlement renewal window has ended');
     }
     const deviceId = body.deviceId || session.deviceId || 'unknown-device';
-    upsertDevice(state, session, deviceId, body.deviceName || session.deviceName, session.platform);
+    const device = upsertDevice(state, session, deviceId, body.deviceName || session.deviceName, session.platform);
+    if (device.status === 'blocked') {
+      fail(403, 'device_blocked', 'device is blocked');
+    }
+    ensureDeviceCanUseEntitlement(state, entitlement, deviceId);
     const lease = upsertLease(state, entitlement, session, deviceId);
     audit(state, session, 'lease.renew', 'offline_lease', lease.leaseId, { modelId });
     await writeState(state);
@@ -2588,6 +3227,13 @@ async function handleRoute(req, res) {
 
   if (req.method === 'POST' && (pathname === '/api/cloud/v1/ingest/asset' || pathname === '/api/platform/v1/ingest/asset')) {
     await handleIngest(state, req, res, 'asset');
+    return;
+  }
+
+  if (req.method === 'GET' && /^\/api\/platform\/v1\/admin\/ingest\/(assets|results|logs|stats)$/.test(pathname)) {
+    const session = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    const collectionName = pathname.split('/').pop();
+    sendJson(res, 200, { [collectionName]: state.ingests[collectionName] || [], viewer: publicUser(session) });
     return;
   }
 

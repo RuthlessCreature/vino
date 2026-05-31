@@ -22,6 +22,11 @@
           <span>密码</span>
           <input id="loginPasswordInput" type="password" autocomplete="current-password" value="meiyoumima" required />
         </label>
+        <div class="login-demo-list" aria-label="演示账号">
+          <button class="demo-account" type="button" data-email="buyer@vino.cc" data-password="demo123">采购管理员</button>
+          <button class="demo-account" type="button" data-email="demo@vino.cc" data-password="demo123">现场操作员</button>
+          <button class="demo-account" type="button" data-email="developer@vino.cc" data-password="demo123">开发者</button>
+        </div>
         <button class="btn primary" type="submit">登录</button>
         <div id="loginErrorLabel" class="error hidden"></div>
       </form>
@@ -55,6 +60,34 @@
 
       <section id="overviewTab" class="tab-panel active">
         <section id="summaryGrid" class="summary-grid"></section>
+        <section class="overview-cloud-grid">
+          <section class="panel cloud-access-panel">
+            <div class="panel-head">
+              <h2>云端接入</h2>
+              <span id="cloudModeLabel" class="badge ok">Platform Cloud</span>
+            </div>
+            <div class="endpoint-row">
+              <div>
+                <div class="summary-label">Cloud URL</div>
+                <div id="cloudEndpointLabel" class="endpoint-value mono">-</div>
+              </div>
+              <button id="copyCloudEndpointButton" class="btn" type="button">复制</button>
+            </div>
+            <div class="endpoint-meta">
+              <span class="pill">iPhone 手动填写</span>
+              <span class="pill">兼容 /api/cloud/v1</span>
+              <span class="pill">票据 15 分钟</span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>业务闭环</h2>
+              <span id="flowHealthLabel" class="badge">未加载</span>
+            </div>
+            <div id="businessFlowList" class="flow-list"></div>
+          </section>
+        </section>
         <section class="layout two">
           <section class="panel">
             <div class="panel-head">
@@ -186,11 +219,40 @@
                 <span>标签，逗号分隔</span>
                 <input id="developerModelTagsInput" value="coreml,industrial" />
               </label>
+              <label>
+                <span>版本</span>
+                <input id="developerBuildVersionInput" value="1.0.0" />
+              </label>
+              <label>
+                <span>构建文件</span>
+                <input id="developerBuildFileInput" type="file" />
+              </label>
               <div class="form-actions span-2">
-                <button class="btn primary" type="submit">保存草稿</button>
+                <button class="btn primary" type="submit">保存并提审</button>
               </div>
             </form>
           </section>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>模型供给</h2>
+            <span id="developerModelCountLabel" class="muted">0</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>状态</th>
+                  <th>SKU</th>
+                  <th>授权</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="developerModelsTableBody"></tbody>
+            </table>
+          </div>
         </section>
 
         <section class="layout two">
@@ -289,6 +351,7 @@
                 <select id="entitlementAssignedTypeInput">
                   <option value="user">用户</option>
                   <option value="organization">组织</option>
+                  <option value="device">设备</option>
                 </select>
               </label>
               <label>
@@ -320,6 +383,27 @@
               </div>
             </form>
           </section>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>订单与收款</h2>
+            <span id="commerceOrderCountLabel" class="muted">0</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>订单</th>
+                  <th>组织</th>
+                  <th>金额</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="commerceOrdersTableBody"></tbody>
+            </table>
+          </div>
         </section>
 
         <section class="panel">
@@ -454,9 +538,82 @@
             </table>
           </div>
         </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>用户清单</h2>
+              <span class="muted">User</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>用户</th>
+                    <th>角色</th>
+                    <th>组织</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>SKU 清单</h2>
+              <span class="muted">SKU</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>模型</th>
+                    <th>价格</th>
+                    <th>策略</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="skusTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
       </section>
 
       <section id="terminalTab" class="tab-panel">
+        <section class="terminal-access-grid">
+          <section class="panel cloud-access-panel">
+            <div class="panel-head">
+              <h2>iPhone 接入</h2>
+              <span class="badge ok">Cloud</span>
+            </div>
+            <div class="endpoint-row">
+              <div>
+                <div class="summary-label">Cloud URL</div>
+                <div id="terminalEndpointLabel" class="endpoint-value mono">-</div>
+              </div>
+              <button id="copyTerminalEndpointButton" class="btn" type="button">复制</button>
+            </div>
+            <div class="endpoint-meta">
+              <span class="pill">手动填写</span>
+              <span class="pill">/api/cloud/v1</span>
+              <span class="pill">Web 授权后下载</span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>终端状态</h2>
+              <span id="terminalHealthLabel" class="badge">未加载</span>
+            </div>
+            <div id="terminalHealthList" class="flow-list"></div>
+          </section>
+        </section>
+
         <section class="layout two">
           <section class="panel">
             <div class="panel-head">
@@ -471,6 +628,7 @@
                     <th>组织</th>
                     <th>平台</th>
                     <th>最近在线</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="devicesTableBody"></tbody>
@@ -518,6 +676,50 @@
               <tbody id="assetsTableBody"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="layout two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>下载票据</h2>
+              <span id="ticketCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>票据</th>
+                    <th>模型</th>
+                    <th>设备</th>
+                    <th>状态</th>
+                    <th>过期</th>
+                  </tr>
+                </thead>
+                <tbody id="ticketsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>离线租约</h2>
+              <span id="leaseCountLabel" class="muted">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>租约</th>
+                    <th>模型</th>
+                    <th>设备</th>
+                    <th>状态</th>
+                    <th>到期</th>
+                  </tr>
+                </thead>
+                <tbody id="leasesTableBody"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </section>
 

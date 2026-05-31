@@ -4,6 +4,7 @@
   "private": true,
   "description": "vino model commerce, licensing, delivery and admin platform",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node scripts/e2e-platform-smoke.js"
   }
 }

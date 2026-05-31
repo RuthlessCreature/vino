@@ -199,7 +199,7 @@ public final class VinoAppState: ObservableObject {
         static let cloudLoginEmail = "vino.cloud.loginEmail"
     }
 
-    private static let defaultCloudBaseURL = "http://172.20.10.3:8787"
+    private static let defaultCloudBaseURL = "http://127.0.0.1:8787"
     private static let defaultLocalNodeBaseURL = "http://127.0.0.1:49030"
     private static let defaultCloudLoginEmail = "demo@vino.cc"
     private static let defaultCloudLoginPassword = "demo123"
