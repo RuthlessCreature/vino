@@ -1,0 +1,225 @@
+simulator UDID: B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1
+app: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Debug-iphonesimulator/灵眼GX.app
+$ xcrun simctl boot B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1
+boot: exit 0
+$ xcrun simctl bootstatus B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 -b
+Monitoring boot status for QA-vino-iPhone-1.0.0 (B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1).
+[2026-06-11 06:28:47 +0000] Status=1, isTerminal=NO, Elapsed=00:01.
+	Waiting on BackBoard
+
+[2026-06-11 06:28:49 +0000] Status=2, isTerminal=NO, Elapsed=00:04.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:00 seconds
+
+[2026-06-11 06:28:49 +0000] Status=2, isTerminal=NO, Elapsed=00:04.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:00 seconds
+
+[2026-06-11 06:28:49 +0000] Status=2, isTerminal=NO, Elapsed=00:04.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:00 seconds
+
+[2026-06-11 06:28:50 +0000] Status=2, isTerminal=NO, Elapsed=00:05.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:01 seconds
+
+[2026-06-11 06:28:51 +0000] Status=2, isTerminal=NO, Elapsed=00:06.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:02 seconds
+
+[2026-06-11 06:28:52 +0000] Status=2, isTerminal=NO, Elapsed=00:07.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:03 seconds
+
+[2026-06-11 06:28:53 +0000] Status=2, isTerminal=NO, Elapsed=00:08.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:04 seconds
+
+[2026-06-11 06:28:54 +0000] Status=2, isTerminal=NO, Elapsed=00:09.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:05 seconds
+
+[2026-06-11 06:28:55 +0000] Status=2, isTerminal=NO, Elapsed=00:10.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:06 seconds
+
+[2026-06-11 06:28:56 +0000] Status=2, isTerminal=NO, Elapsed=00:11.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:07 seconds
+
+[2026-06-11 06:28:57 +0000] Status=2, isTerminal=NO, Elapsed=00:12.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:08 seconds
+
+[2026-06-11 06:28:58 +0000] Status=2, isTerminal=NO, Elapsed=00:13.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:09 seconds
+
+[2026-06-11 06:28:59 +0000] Status=2, isTerminal=NO, Elapsed=00:14.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:10 seconds
+
+[2026-06-11 06:29:00 +0000] Status=2, isTerminal=NO, Elapsed=00:15.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:11 seconds
+
+[2026-06-11 06:29:01 +0000] Status=2, isTerminal=NO, Elapsed=00:16.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:12 seconds
+
+[2026-06-11 06:29:02 +0000] Status=2, isTerminal=NO, Elapsed=00:17.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:13 seconds
+
+[2026-06-11 06:29:03 +0000] Status=2, isTerminal=NO, Elapsed=00:18.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:14 seconds
+
+[2026-06-11 06:29:04 +0000] Status=2, isTerminal=NO, Elapsed=00:19.
+	Waiting on Data Migration
+		Reason:Gathering plugins
+		Migration Elapsed:00:15 seconds
+
+[2026-06-11 06:29:05 +0000] Status=4294967295, isTerminal=YES, Elapsed=00:20.
+	Finished
+bootstatus: exit 0
+$ xcrun simctl uninstall B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+uninstall-before-install: exit 0
+$ xcrun simctl install B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Debug-iphonesimulator/灵眼GX.app
+install: exit 0
+$ xcrun simctl get_app_container B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+/Users/cengcheng/Library/Developer/CoreSimulator/Devices/B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1/data/Containers/Bundle/Application/1563F8B2-6829-469C-840D-3EE6383F2E9C/灵眼GX.app
+get-app-container: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+cc.vino.iphone: 1921
+launch-app: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch.png
+screenshot-launch: exit 0
+$ xcrun simctl terminate B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+terminate-app: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_after_terminate.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_after_terminate.png
+screenshot-after-terminate: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 com.apple.springboard
+com.apple.springboard: 872
+launch-springboard: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_springboard.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_springboard.png
+screenshot-springboard: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 com.apple.Preferences
+com.apple.Preferences: 2315
+launch-settings: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_settings.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_settings.png
+screenshot-settings: exit 0
+$ xcrun simctl openurl B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 App-Prefs:root=cc.vino.iphone
+open-app-prefs-url: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_app_prefs_url.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_app_prefs_url.png
+screenshot-app-prefs-url: exit 0
+$ xcrun simctl uninstall B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+uninstall-before-reinstall: exit 0
+$ xcrun simctl install B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Debug-iphonesimulator/灵眼GX.app
+reinstall: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+cc.vino.iphone: 2551
+relaunch-after-reinstall: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_relaunch_after_reinstall.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_relaunch_after_reinstall.png
+screenshot-relaunch-after-reinstall: exit 0
+result: install and launch command path completed; visual icon surfaces require screenshot review and may be inconclusive where SpringBoard navigation is unavailable.
+--- permission-clean screenshot pass ---
+$ xcrun simctl privacy B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 grant camera cc.vino.iphone
+grant-camera: exit 0
+$ xcrun simctl terminate B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=3):
+Simulator device failed to terminate cc.vino.iphone.
+found nothing to terminate
+Underlying error (domain=NSPOSIXErrorDomain, code=3):
+	The request to terminate "cc.vino.iphone" failed. found nothing to terminate
+	found nothing to terminate
+terminate-app-before-clean-launch: exit 3
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+cc.vino.iphone: 7026
+launch-app-after-camera-grant: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch_camera_granted.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch_camera_granted.png
+screenshot-launch-camera-granted: exit 0
+$ xcrun simctl terminate B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+terminate-app-before-clean-home: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 com.apple.springboard
+com.apple.springboard: 872
+launch-springboard-clean: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_home_clean.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_home_clean.png
+screenshot-home-clean: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 com.apple.Preferences
+com.apple.Preferences: 2315
+launch-settings-clean: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_settings_clean.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_settings_clean.png
+screenshot-settings-clean: exit 0
+$ xcrun simctl openurl B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 App-Prefs:root=cc.vino.iphone
+open-app-prefs-url-clean: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_app_prefs_url_clean.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_app_prefs_url_clean.png
+screenshot-app-prefs-url-clean: exit 0
+--- reinstall with pre-granted camera permission ---
+$ xcrun simctl terminate B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=3):
+Simulator device failed to terminate cc.vino.iphone.
+found nothing to terminate
+Underlying error (domain=NSPOSIXErrorDomain, code=3):
+	The request to terminate "cc.vino.iphone" failed. found nothing to terminate
+	found nothing to terminate
+terminate-before-pregrant-pass: exit 3
+$ xcrun simctl uninstall B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+uninstall-before-pregrant-pass: exit 0
+$ xcrun simctl install B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Debug-iphonesimulator/灵眼GX.app
+install-pregrant-pass: exit 0
+$ xcrun simctl privacy B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 grant camera cc.vino.iphone
+grant-camera-before-first-launch: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+cc.vino.iphone: 12107
+launch-app-pregranted: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch_pregranted.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_launch_pregranted.png
+screenshot-launch-pregranted: exit 0
+$ xcrun simctl terminate B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 cc.vino.iphone
+terminate-app-pregranted: exit 0
+$ xcrun simctl launch B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 com.apple.springboard
+com.apple.springboard: 872
+launch-springboard-pregranted: exit 0
+$ xcrun simctl io B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1 screenshot /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_home_pregranted.png
+Detected file type 'PNG' from extension
+Wrote screenshot to: /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/screenshots/simulator_home_pregranted.png
+screenshot-home-pregranted: exit 0

@@ -1,0 +1,17 @@
+[Debug simulator unthinned] totalEntries=18 iconEntries=13
+renditions=AppIcon-1024.png, AppIcon-20@2x.png, AppIcon-20@3x.png, AppIcon-29@2x.png, AppIcon-29@3x.png, AppIcon-40@2x.png, AppIcon-40@3x.png, AppIcon-60@2x.png, AppIcon-60@3x.png, AppIcon-60@3x.png
+sizes:
+- 1024x1024 marketing 1 AppIcon-1024.png
+- 40x40 phone 2 AppIcon-20@2x.png
+- 58x58 phone 2 AppIcon-29@2x.png
+- 80x80 phone 2 AppIcon-40@2x.png
+- 120x120 phone 2 AppIcon-60@2x.png
+- 180x180 phone 2 AppIcon-60@3x.png
+- 60x60 phone 3 AppIcon-20@3x.png
+- 87x87 phone 3 AppIcon-29@3x.png
+- 120x120 phone 3 AppIcon-40@3x.png
+- 180x180 phone 3 AppIcon-60@3x.png
+- ?x? phone 1 (multi-size)
+- ?x? phone 1 (multi-size)
+- ?x? marketing 1 (multi-size)
+result: PASS

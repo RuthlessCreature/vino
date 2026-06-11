@@ -1,0 +1,25 @@
+[Debug] target=vino_iPhone
+ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon expected=AppIcon PASS
+MARKETING_VERSION=1.0.0 expected=1.0.0 PASS
+TARGETED_DEVICE_FAMILY=1 expected=1 PASS
+SUPPORTED_PLATFORMS=iphoneos iphonesimulator expected=iphoneos iphonesimulator PASS
+SUPPORTS_MACCATALYST=NO expected=NO PASS
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO expected=NO PASS
+SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO expected=NO PASS
+INFOPLIST_FILE=AppHost/Info.plist expected=AppHost/Info.plist PASS
+GENERATE_INFOPLIST_FILE=NO expected=NO PASS
+PRODUCT_BUNDLE_IDENTIFIER=cc.vino.iphone expected=cc.vino.iphone PASS
+SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk expected=(record only) PASS
+[Release] target=vino_iPhone
+ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon expected=AppIcon PASS
+MARKETING_VERSION=1.0.0 expected=1.0.0 PASS
+TARGETED_DEVICE_FAMILY=1 expected=1 PASS
+SUPPORTED_PLATFORMS=iphoneos iphonesimulator expected=iphoneos iphonesimulator PASS
+SUPPORTS_MACCATALYST=NO expected=NO PASS
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO expected=NO PASS
+SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO expected=NO PASS
+INFOPLIST_FILE=AppHost/Info.plist expected=AppHost/Info.plist PASS
+GENERATE_INFOPLIST_FILE=NO expected=NO PASS
+PRODUCT_BUNDLE_IDENTIFIER=cc.vino.iphone expected=cc.vino.iphone PASS
+SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk expected=(record only) PASS
+result: PASS

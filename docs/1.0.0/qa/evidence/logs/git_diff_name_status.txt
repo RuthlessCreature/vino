@@ -1,0 +1,2 @@
+M	vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/Contents.json
+M	vino_iPhone/vino_iPhone.xcodeproj/project.pbxproj

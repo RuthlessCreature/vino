@@ -1,0 +1,3 @@
+created QA simulator: B2A8DF6D-0A29-4509-BE25-2E7C43EFDFD1
+name: QA-vino-iPhone-1.0.0
+runtime: com.apple.CoreSimulator.SimRuntime.iOS-18-3

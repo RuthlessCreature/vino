@@ -1,0 +1,4 @@
+booted iPhone found: no
+candidate existing iPhone: iPhone 16 FD240FF9-7BB5-45B4-984D-27E54B5E0F37 com.apple.CoreSimulator.SimRuntime.iOS-18-3
+runtime candidate: iOS 18.3 18.3.1 com.apple.CoreSimulator.SimRuntime.iOS-18-3
+policy: if no booted iPhone exists, create QA-vino-iPhone-1.0.0 disposable simulator using iPhone 16 and the candidate runtime; do not erase user simulators.

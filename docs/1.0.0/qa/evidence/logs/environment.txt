@@ -1,0 +1,6 @@
+ProductName:		macOS
+ProductVersion:		14.6
+BuildVersion:		23G80
+Xcode 16.2
+Build version 16C5032a
+/Applications/Xcode.app/Contents/Developer

@@ -1,0 +1,11 @@
+ M vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/Contents.json
+ M vino_iPhone/vino_iPhone.xcodeproj/project.pbxproj
+?? docs/1.0.0/
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-29@2x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-29@3x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-40@2x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-40@3x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-60@2x.png
+?? vino_iPhone/AppHost/Assets.xcassets/AppIcon.appiconset/AppIcon-60@3x.png

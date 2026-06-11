@@ -1,0 +1,62 @@
+[Source] /Users/cengcheng/Documents/GitHub/vino/vino_iPhone/AppHost/Info.plist
+CFBundleDisplayName=灵眼GX expected=灵眼GX PASS
+CFBundleName=灵眼GX expected=灵眼GX PASS
+CFBundleShortVersionString=$(MARKETING_VERSION) expected=$(MARKETING_VERSION) PASS
+LSRequiresIPhoneOS=true expected=true PASS
+NSCameraUsageDescription=vino needs camera access for live preview, capture, recording, and on-device inference. expected=vino needs camera access for live preview, capture, recording, and on-device inference. PASS
+NSLocalNetworkUsageDescription=vino uses the local network to communicate with the desktop control station and publish device state. expected=vino uses the local network to communicate with the desktop control station and publish device state. PASS
+NSPhotoLibraryAddUsageDescription=vino needs access to save captured photos and videos into the device photo library. expected=vino needs access to save captured photos and videos into the device photo library. PASS
+NSBonjourServices=Array {
+    _vino-control._tcp
+} record
+NSAppTransportSecurity:NSAllowsLocalNetworking=true record
+UILaunchScreen=Dict {
+} record
+UISupportedInterfaceOrientations=Array {
+    UIInterfaceOrientationPortrait
+} record
+UIApplicationSupportsIndirectInputEvents=true record
+UIFileSharingEnabled=true record
+[Debug simulator] /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Debug-iphonesimulator/灵眼GX.app/Info.plist
+CFBundleDisplayName=灵眼GX expected=灵眼GX PASS
+CFBundleName=灵眼GX expected=灵眼GX PASS
+CFBundleIdentifier=cc.vino.iphone expected=cc.vino.iphone PASS
+CFBundleShortVersionString=1.0.0 expected=1.0.0 PASS
+CFBundleVersion=1 expected=1 PASS
+LSRequiresIPhoneOS=true expected=true PASS
+NSCameraUsageDescription=vino needs camera access for live preview, capture, recording, and on-device inference. expected=vino needs camera access for live preview, capture, recording, and on-device inference. PASS
+NSLocalNetworkUsageDescription=vino uses the local network to communicate with the desktop control station and publish device state. expected=vino uses the local network to communicate with the desktop control station and publish device state. PASS
+NSPhotoLibraryAddUsageDescription=vino needs access to save captured photos and videos into the device photo library. expected=vino needs access to save captured photos and videos into the device photo library. PASS
+NSBonjourServices=Array {
+    _vino-control._tcp
+} record
+NSAppTransportSecurity:NSAllowsLocalNetworking=true record
+UILaunchScreen=Dict {
+} record
+UISupportedInterfaceOrientations=Array {
+    UIInterfaceOrientationPortrait
+} record
+UIApplicationSupportsIndirectInputEvents=true record
+UIFileSharingEnabled=true record
+[Release iOS] /Users/cengcheng/Documents/GitHub/vino/docs/1.0.0/qa/evidence/derived-data/Build/Products/Release-iphoneos/灵眼GX.app/Info.plist
+CFBundleDisplayName=灵眼GX expected=灵眼GX PASS
+CFBundleName=灵眼GX expected=灵眼GX PASS
+CFBundleIdentifier=cc.vino.iphone expected=cc.vino.iphone PASS
+CFBundleShortVersionString=1.0.0 expected=1.0.0 PASS
+CFBundleVersion=1 expected=1 PASS
+LSRequiresIPhoneOS=true expected=true PASS
+NSCameraUsageDescription=vino needs camera access for live preview, capture, recording, and on-device inference. expected=vino needs camera access for live preview, capture, recording, and on-device inference. PASS
+NSLocalNetworkUsageDescription=vino uses the local network to communicate with the desktop control station and publish device state. expected=vino uses the local network to communicate with the desktop control station and publish device state. PASS
+NSPhotoLibraryAddUsageDescription=vino needs access to save captured photos and videos into the device photo library. expected=vino needs access to save captured photos and videos into the device photo library. PASS
+NSBonjourServices=Array {
+    _vino-control._tcp
+} record
+NSAppTransportSecurity:NSAllowsLocalNetworking=true record
+UILaunchScreen=Dict {
+} record
+UISupportedInterfaceOrientations=Array {
+    UIInterfaceOrientationPortrait
+} record
+UIApplicationSupportsIndirectInputEvents=true record
+UIFileSharingEnabled=true record
+result: PASS

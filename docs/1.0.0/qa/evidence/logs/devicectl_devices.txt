@@ -1,0 +1,13 @@
+Devices:
+Name                    Hostname                                     Identifier                             State         Model                         
+---------------------   ------------------------------------------   ------------------------------------   -----------   ------------------------------
+Cosmetic Cygia?iPhone   00008130-001058141431001C.coredevice.local   71DBFBDA-2DD3-48B9-8186-E94D17CFC2AE   unavailable   iPhone 15 Pro Max (iPhone16,2)
+D37V7YXMKC-OT           00008140-00146DD62E33001C.coredevice.local   F900FC78-6B15-4901-B1E7-C15F5436BF96   unavailable   iPhone 16 Pro Max (iPhone17,2)
+D967219RLY-OT           00008140-001C7C6C2133001C.coredevice.local   F0875C53-26A3-4D3A-AF69-D1776B88EACA   unavailable   iPhone 16 Pro Max (iPhone17,2)
+iPhone                  00008130-001A65AE14C3001C.coredevice.local   29B5BEE4-319C-4899-8976-8F45A2791E7E   unavailable   iPhone 15 Pro Max (iPhone16,2)
+iPhone                  00008130-00121DDA2183001C.coredevice.local   957BDF37-ABF3-4FBA-92C2-010F990C9241   unavailable   iPhone 15 Pro Max (iPhone16,2)
+iPhone                  00008130-001A60490E21001C.coredevice.local   AC47AA66-A120-4919-AC78-0C8447C14AFF   unavailable   iPhone 15 Pro Max (iPhone16,2)
+iPhone Primero          00008110-00012D4A1A20201E.coredevice.local   ECAEA645-59ED-48AA-8641-1CC9DE52E952   unavailable   iPhone 14 (iPhone14,7)        
+???iPhone               00008130-00042CE12E43001C.coredevice.local   0658DA5A-DF70-49DF-AC53-F8AA1A54C403   unavailable   iPhone 15 Pro Max (iPhone16,2)
+???iPhone               00008130-000229143679001C.coredevice.local   3FA9AFE1-4D98-482F-B15F-C0F844F725DD   unavailable   iPhone 15 Pro Max (iPhone16,2)
+????iPhone              00008130-001A60963C42001C.coredevice.local   B95C42B4-4087-4668-9E9E-3858572DC899   unavailable   iPhone 15 Pro Max (iPhone16,2)
