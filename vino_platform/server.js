@@ -3,23 +3,79 @@ const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { once } = require('node:events');
 const { URL } = require('node:url');
 
-const PORT = Number(process.env.PORT || 8797);
 const ROOT = __dirname;
 const REPO_ROOT = path.resolve(ROOT, '..');
-const PUBLIC_ROOT = path.join(ROOT, 'public');
+const HOST = process.env.HOST || '0.0.0.0';
+const PORT = Number(process.env.PORT || 8797);
+const PUBLIC_ROOT = path.resolve(process.env.VINO_PUBLIC_ROOT || path.join(ROOT, 'public'));
 const DATA_ROOT = path.resolve(process.env.VINO_DATA_ROOT || path.join(ROOT, 'data'));
 const STATE_PATH = path.resolve(process.env.VINO_STATE_PATH || path.join(DATA_ROOT, 'state.json'));
 const INGEST_ASSET_ROOT = path.resolve(process.env.VINO_INGEST_ASSET_ROOT || path.join(DATA_ROOT, 'assets'));
 const MODEL_UPLOAD_ROOT = path.resolve(process.env.VINO_MODEL_UPLOAD_ROOT || path.join(DATA_ROOT, 'model-builds'));
+const ARTIFACT_CACHE_ROOT = path.resolve(process.env.VINO_ARTIFACT_CACHE_ROOT || path.join(DATA_ROOT, 'artifact-cache'));
+const DOWNLOAD_WORK_ROOT = path.resolve(process.env.VINO_DOWNLOAD_WORK_ROOT || path.join(DATA_ROOT, 'download-work'));
+const BACKUP_ROOT = path.resolve(process.env.VINO_BACKUP_ROOT || path.join(DATA_ROOT, 'backups'));
 const MODELS_ROOT = path.resolve(process.env.VINO_MODELS_ROOT || path.join(REPO_ROOT, 'models'));
 const SKIP_MODEL_DISCOVERY = process.env.VINO_SKIP_MODEL_DISCOVERY === '1';
+const EXTERNAL_BASE_URL = String(process.env.VINO_EXTERNAL_BASE_URL || '').replace(/\/+$/, '');
+const REQUEST_BODY_LIMIT_BYTES = parseByteSize(process.env.VINO_REQUEST_BODY_LIMIT || process.env.REQUEST_BODY_LIMIT || '200mb');
+const SESSION_TTL_DAYS = Number(process.env.VINO_SESSION_TTL_DAYS || 7);
+const SEED_DEMO_DATA = parseBoolean(process.env.VINO_SEED_DEMO_DATA, true);
+const BOOTSTRAP_ADMIN_EMAIL = String(process.env.VINO_BOOTSTRAP_ADMIN_EMAIL || 'admin').trim().toLowerCase();
+const BOOTSTRAP_ADMIN_PASSWORD = String(process.env.VINO_BOOTSTRAP_ADMIN_PASSWORD || '');
+const RATE_LIMIT_ENABLED = parseBoolean(process.env.VINO_RATE_LIMIT_ENABLED, true);
+const RATE_LIMIT_WINDOW_MS = parsePositiveInt(process.env.VINO_RATE_LIMIT_WINDOW_MS, 60 * 1000);
+const RATE_LIMIT_MAX = parsePositiveInt(process.env.VINO_RATE_LIMIT_MAX, 600);
+const RATE_LIMIT_AUTH_MAX = parsePositiveInt(process.env.VINO_RATE_LIMIT_AUTH_MAX, 30);
+const MAINTENANCE_TICKET_RETENTION_DAYS = parsePositiveInt(process.env.VINO_TICKET_RETENTION_DAYS, 30);
+const MAINTENANCE_DOWNLOAD_WORK_RETENTION_MINUTES = parsePositiveInt(process.env.VINO_DOWNLOAD_WORK_RETENTION_MINUTES, 60);
+const MAINTENANCE_ARTIFACT_CACHE_RETENTION_DAYS = parsePositiveInt(process.env.VINO_ARTIFACT_CACHE_RETENTION_DAYS, 30);
 const PASSWORD_HASH_ITERATIONS = 120000;
 const ARCHIVE_CACHE = new Map();
+const RATE_LIMIT_BUCKETS = new Map();
+let STATE_OPERATION_LOCK = Promise.resolve();
+let STATE_OPERATION_QUEUE_DEPTH = 0;
+let STATE_OPERATION_LAST_ERROR_AT = null;
 const ENCRYPTION_ENVELOPE_MAGIC = Buffer.from('VINOENC1', 'utf8');
 const BUNDLE_ARCHIVE_MAGIC = Buffer.from('VINOAR01', 'utf8');
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+function parseByteSize(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const match = raw.match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/);
+  if (!match) {
+    return 200 * 1024 * 1024;
+  }
+  const number = Number(match[1]);
+  const unit = match[2] || 'b';
+  const multiplier = {
+    b: 1,
+    kb: 1024,
+    mb: 1024 * 1024,
+    gb: 1024 * 1024 * 1024,
+  }[unit];
+  return Math.floor(number * multiplier);
+}
+
+function parseBoolean(value, defaultValue = false) {
+  if (value == null || value === '') {
+    return defaultValue;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function parsePositiveInt(value, defaultValue) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : defaultValue;
+}
+
+function parseNonNegativeInt(value, defaultValue) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : defaultValue;
+}
 
 function isoNow() {
   return new Date().toISOString();
@@ -93,12 +149,33 @@ function publicUser(user) {
   };
 }
 
+function responseHeaders(res, headers = {}) {
+  return {
+    ...headers,
+    'X-Request-Id': res.requestId || '',
+    'Access-Control-Allow-Origin': '*',
+  };
+}
+
+function payloadWithRequestId(res, payload) {
+  if (!payload?.error) {
+    return payload;
+  }
+  return {
+    ...payload,
+    error: {
+      requestId: res.requestId,
+      ...payload.error,
+    },
+  };
+}
+
 function sendJson(res, statusCode, payload) {
-  const body = Buffer.from(JSON.stringify(payload, null, 2));
+  const body = Buffer.from(JSON.stringify(payloadWithRequestId(res, payload), null, 2));
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': body.length,
-    'Access-Control-Allow-Origin': '*',
+    ...responseHeaders(res),
   });
   res.end(body);
 }
@@ -107,9 +184,49 @@ function sendBuffer(res, statusCode, buffer, contentType = 'application/octet-st
   res.writeHead(statusCode, {
     'Content-Type': contentType,
     'Content-Length': buffer.length,
-    'Access-Control-Allow-Origin': '*',
+    ...responseHeaders(res),
   });
   res.end(buffer);
+}
+
+function sendError(res, statusCode, code, message, details) {
+  sendJson(res, statusCode, {
+    error: {
+      code,
+      message,
+      ...(details ? { details } : {}),
+    },
+  });
+}
+
+function sendFile(res, statusCode, filePath, byteCount, contentType = 'application/octet-stream', onDone = null) {
+  const stream = fsSync.createReadStream(filePath);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) {
+      return;
+    }
+    cleaned = true;
+    if (onDone) {
+      onDone();
+    }
+  };
+  stream.on('error', (error) => {
+    cleanup();
+    if (!res.headersSent) {
+      sendJson(res, 500, { error: { code: 'file_stream_failed', message: error.message } });
+    } else {
+      res.destroy(error);
+    }
+  });
+  stream.on('close', cleanup);
+  res.writeHead(statusCode, {
+    'Content-Type': contentType,
+    'Content-Length': byteCount,
+    'Cache-Control': 'no-store',
+    ...responseHeaders(res),
+  });
+  stream.pipe(res);
 }
 
 function fail(statusCode, code, message) {
@@ -123,13 +240,97 @@ function normalizePathname(requestUrl) {
   return new URL(requestUrl, `http://127.0.0.1:${PORT}`).pathname;
 }
 
+function isPathInside(basePath, targetPath) {
+  const relative = path.relative(basePath, targetPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function requestBaseUrl(req) {
+  if (EXTERNAL_BASE_URL) {
+    return EXTERNAL_BASE_URL;
+  }
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const proto = forwardedProto || (req.socket.encrypted ? 'https' : 'http');
+  const host = forwardedHost || req.headers.host || `127.0.0.1:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function requestIdFromRequest(req) {
+  const raw = String(req.headers['x-request-id'] || '').trim();
+  const safe = raw.replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 96);
+  return safe || crypto.randomUUID();
+}
+
+function clientIpFromRequest(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+}
+
+function rateLimitForPath(pathname) {
+  if (/^\/api\/(platform|cloud)\/v1\/auth\/login$/.test(pathname)) {
+    return { scope: 'auth', max: RATE_LIMIT_AUTH_MAX };
+  }
+  return { scope: 'global', max: RATE_LIMIT_MAX };
+}
+
+function pruneRateLimitBuckets(now) {
+  if (RATE_LIMIT_BUCKETS.size < 5000) {
+    return;
+  }
+  for (const [key, bucket] of RATE_LIMIT_BUCKETS) {
+    if (now - bucket.windowStartedAt > RATE_LIMIT_WINDOW_MS * 2) {
+      RATE_LIMIT_BUCKETS.delete(key);
+    }
+  }
+}
+
+function applyRateLimit(req, res, pathname) {
+  if (!RATE_LIMIT_ENABLED || req.method === 'OPTIONS') {
+    return true;
+  }
+  const { scope, max } = rateLimitForPath(pathname);
+  if (!max) {
+    return true;
+  }
+  const now = Date.now();
+  pruneRateLimitBuckets(now);
+  const key = `${scope}:${clientIpFromRequest(req)}`;
+  const current = RATE_LIMIT_BUCKETS.get(key);
+  const bucket = current && now - current.windowStartedAt < RATE_LIMIT_WINDOW_MS
+    ? current
+    : { windowStartedAt: now, count: 0 };
+  bucket.count += 1;
+  RATE_LIMIT_BUCKETS.set(key, bucket);
+
+  const resetSeconds = Math.max(1, Math.ceil((bucket.windowStartedAt + RATE_LIMIT_WINDOW_MS - now) / 1000));
+  const remaining = Math.max(0, max - bucket.count);
+  res.setHeader('RateLimit-Limit', String(max));
+  res.setHeader('RateLimit-Remaining', String(remaining));
+  res.setHeader('RateLimit-Reset', String(resetSeconds));
+
+  if (bucket.count <= max) {
+    return true;
+  }
+  res.setHeader('Retry-After', String(resetSeconds));
+  sendError(res, 429, 'rate_limited', 'too many requests', {
+    scope,
+    limit: max,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    retryAfterSeconds: resetSeconds,
+  });
+  return false;
+}
+
 async function ensureDirs() {
   await fs.mkdir(DATA_ROOT, { recursive: true });
   await fs.mkdir(INGEST_ASSET_ROOT, { recursive: true });
   await fs.mkdir(MODEL_UPLOAD_ROOT, { recursive: true });
+  await fs.mkdir(ARTIFACT_CACHE_ROOT, { recursive: true });
+  await fs.mkdir(DOWNLOAD_WORK_ROOT, { recursive: true });
 }
 
-async function readBody(req, limitBytes = 200 * 1024 * 1024) {
+async function readBody(req, limitBytes = REQUEST_BODY_LIMIT_BYTES) {
   const chunks = [];
   let total = 0;
   for await (const chunk of req) {
@@ -154,14 +355,25 @@ function authTokenFromRequest(req) {
   return raw.startsWith('Bearer ') ? raw.slice('Bearer '.length).trim() : '';
 }
 
+function pruneSessions(state) {
+  const now = Date.now();
+  state.sessions = (state.sessions || []).filter((session) => {
+    if (!session || session.revokedAt) {
+      return false;
+    }
+    return new Date(session.expiresAt).getTime() > now;
+  });
+}
+
 function getSessionFromToken(state, token) {
   if (!token) {
     return null;
   }
   const session = state.sessions.find((item) => item.accessToken === token);
-  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) {
+  if (!session || session.revokedAt || new Date(session.expiresAt).getTime() <= Date.now()) {
     return null;
   }
+  session.lastSeenAt = isoNow();
   return session;
 }
 
@@ -423,6 +635,97 @@ async function discoverCoreMLBuilds() {
   return Array.from(deduped.values()).sort((left, right) => left.model.name.localeCompare(right.model.name));
 }
 
+function createSeedUser(user, password) {
+  const seeded = { ...user };
+  setUserPassword(seeded, password);
+  return seeded;
+}
+
+function seedUsers() {
+  if (!SEED_DEMO_DATA) {
+    if (!BOOTSTRAP_ADMIN_PASSWORD) {
+      return [];
+    }
+    return [
+      createSeedUser({
+        userId: 'user-admin-001',
+        email: BOOTSTRAP_ADMIN_EMAIL || 'admin',
+        displayName: 'Platform Admin',
+        organizationId: 'org-platform-001',
+        organizationName: 'Vino Platform',
+        role: 'super_admin',
+        status: 'active',
+      }, BOOTSTRAP_ADMIN_PASSWORD),
+    ];
+  }
+
+  return [
+    createSeedUser({
+      userId: 'user-admin-001',
+      email: BOOTSTRAP_ADMIN_EMAIL || 'admin',
+      displayName: 'Platform Admin',
+      organizationId: 'org-platform-001',
+      organizationName: 'Vino Platform',
+      role: 'super_admin',
+      status: 'active',
+    }, BOOTSTRAP_ADMIN_PASSWORD || 'meiyoumima'),
+    createSeedUser({
+      userId: 'user-buyer-001',
+      email: 'buyer@vino.cc',
+      displayName: 'Buyer Admin',
+      organizationId: 'org-demo-001',
+      organizationName: 'Vino Demo Factory',
+      role: 'buyer_admin',
+      status: 'active',
+    }, 'demo123'),
+    createSeedUser({
+      userId: 'user-demo-001',
+      email: 'demo@vino.cc',
+      displayName: 'Demo Operator',
+      organizationId: 'org-demo-001',
+      organizationName: 'Vino Demo Factory',
+      role: 'buyer_operator',
+      status: 'active',
+    }, 'demo123'),
+    createSeedUser({
+      userId: 'user-dev-001',
+      email: 'developer@vino.cc',
+      displayName: 'Model Developer',
+      organizationId: 'org-dev-001',
+      organizationName: 'Vino Model Lab',
+      role: 'developer_admin',
+      status: 'active',
+    }, 'demo123'),
+    createSeedUser({
+      userId: 'user-ops-001',
+      email: 'ops@vino.cc',
+      displayName: 'Platform Ops',
+      organizationId: 'org-platform-001',
+      organizationName: 'Vino Platform',
+      role: 'platform_ops',
+      status: 'active',
+    }, 'demo123'),
+    createSeedUser({
+      userId: 'user-reviewer-001',
+      email: 'reviewer@vino.cc',
+      displayName: 'Model Reviewer',
+      organizationId: 'org-platform-001',
+      organizationName: 'Vino Platform',
+      role: 'reviewer',
+      status: 'active',
+    }, 'demo123'),
+    createSeedUser({
+      userId: 'user-finance-001',
+      email: 'finance@vino.cc',
+      displayName: 'Finance Admin',
+      organizationId: 'org-platform-001',
+      organizationName: 'Vino Platform',
+      role: 'finance',
+      status: 'active',
+    }, 'demo123'),
+  ];
+}
+
 function seedState() {
   return {
     organizations: [
@@ -448,78 +751,7 @@ function seedState() {
         createdAt: isoNow(),
       },
     ],
-    users: [
-      {
-        userId: 'user-admin-001',
-        email: 'admin',
-        password: 'meiyoumima',
-        displayName: 'Platform Admin',
-        organizationId: 'org-platform-001',
-        organizationName: 'Vino Platform',
-        role: 'super_admin',
-        status: 'active',
-      },
-      {
-        userId: 'user-buyer-001',
-        email: 'buyer@vino.cc',
-        password: 'demo123',
-        displayName: 'Buyer Admin',
-        organizationId: 'org-demo-001',
-        organizationName: 'Vino Demo Factory',
-        role: 'buyer_admin',
-        status: 'active',
-      },
-      {
-        userId: 'user-demo-001',
-        email: 'demo@vino.cc',
-        password: 'demo123',
-        displayName: 'Demo Operator',
-        organizationId: 'org-demo-001',
-        organizationName: 'Vino Demo Factory',
-        role: 'buyer_operator',
-        status: 'active',
-      },
-      {
-        userId: 'user-dev-001',
-        email: 'developer@vino.cc',
-        password: 'demo123',
-        displayName: 'Model Developer',
-        organizationId: 'org-dev-001',
-        organizationName: 'Vino Model Lab',
-        role: 'developer_admin',
-        status: 'active',
-      },
-      {
-        userId: 'user-ops-001',
-        email: 'ops@vino.cc',
-        password: 'demo123',
-        displayName: 'Platform Ops',
-        organizationId: 'org-platform-001',
-        organizationName: 'Vino Platform',
-        role: 'platform_ops',
-        status: 'active',
-      },
-      {
-        userId: 'user-reviewer-001',
-        email: 'reviewer@vino.cc',
-        password: 'demo123',
-        displayName: 'Model Reviewer',
-        organizationId: 'org-platform-001',
-        organizationName: 'Vino Platform',
-        role: 'reviewer',
-        status: 'active',
-      },
-      {
-        userId: 'user-finance-001',
-        email: 'finance@vino.cc',
-        password: 'demo123',
-        displayName: 'Finance Admin',
-        organizationId: 'org-platform-001',
-        organizationName: 'Vino Platform',
-        role: 'finance',
-        status: 'active',
-      },
-    ],
+    users: seedUsers(),
     developers: [
       {
         developerId: 'dev-platform-seed',
@@ -650,6 +882,7 @@ function normalizeState(state) {
   };
   ensureBaselineRecords(normalized);
   migrateUserPasswords(normalized);
+  pruneSessions(normalized);
   return normalized;
 }
 
@@ -706,7 +939,10 @@ async function mergeDiscoveredModels(state) {
   }
 
   const firstModel = state.models.find((model) => model.status === 'listed');
-  if (firstModel && !state.entitlements.some((item) => item.organizationId === 'org-demo-001' && item.modelId === firstModel.modelId)) {
+  const canSeedDemoEntitlement = SEED_DEMO_DATA
+    && state.organizations.some((item) => item.organizationId === 'org-demo-001')
+    && state.users.some((item) => item.userId === 'user-demo-001');
+  if (canSeedDemoEntitlement && firstModel && !state.entitlements.some((item) => item.organizationId === 'org-demo-001' && item.modelId === firstModel.modelId)) {
     state.entitlements.push({
       entitlementId: `ent-${shortHash(`demo:${firstModel.modelId}`)}`,
       sourceOrderItemId: null,
@@ -752,6 +988,25 @@ async function writeState(state) {
   await fs.rename(tempPath, STATE_PATH);
 }
 
+async function withStateLock(action) {
+  STATE_OPERATION_QUEUE_DEPTH += 1;
+  const previous = STATE_OPERATION_LOCK;
+  let release;
+  STATE_OPERATION_LOCK = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => {});
+  try {
+    return await action();
+  } catch (error) {
+    STATE_OPERATION_LAST_ERROR_AT = isoNow();
+    throw error;
+  } finally {
+    STATE_OPERATION_QUEUE_DEPTH = Math.max(0, STATE_OPERATION_QUEUE_DEPTH - 1);
+    release();
+  }
+}
+
 function getModel(state, modelId) {
   return state.models.find((model) => model.modelId === modelId);
 }
@@ -773,6 +1028,227 @@ function developerOwnsModel(state, session, modelId) {
   const developer = getDeveloperForSession(state, session);
   const model = getModel(state, modelId);
   return Boolean(developer && model && model.developerId === developer.developerId);
+}
+
+function stateDoctorIssue(issues, severity, code, message, objectType = null, objectId = null) {
+  issues.push({
+    severity,
+    code,
+    message,
+    ...(objectType ? { objectType } : {}),
+    ...(objectId ? { objectId } : {}),
+  });
+}
+
+function indexById(items, key) {
+  const map = new Map();
+  for (const item of items || []) {
+    const id = item?.[key];
+    if (id) {
+      map.set(id, item);
+    }
+  }
+  return map;
+}
+
+function checkUniqueIds(issues, items, key, objectType) {
+  const seen = new Set();
+  for (const item of items || []) {
+    const id = item?.[key];
+    if (!id) {
+      stateDoctorIssue(issues, 'error', 'missing_id', `${objectType} is missing ${key}`, objectType);
+      continue;
+    }
+    if (seen.has(id)) {
+      stateDoctorIssue(issues, 'error', 'duplicate_id', `${objectType} has duplicate ${key}: ${id}`, objectType, id);
+    }
+    seen.add(id);
+  }
+}
+
+function checkReference(issues, map, id, code, message, objectType, objectId, severity = 'error') {
+  if (id && !map.has(id)) {
+    stateDoctorIssue(issues, severity, code, `${message}: ${id}`, objectType, objectId);
+  }
+}
+
+function buildSourceAbsolutePath(build) {
+  if (!build?.sourcePath) {
+    return null;
+  }
+  return path.isAbsolute(build.sourcePath) ? build.sourcePath : path.join(REPO_ROOT, build.sourcePath);
+}
+
+function buildStateDoctor(state) {
+  const issues = [];
+  const now = Date.now();
+  const organizations = indexById(state.organizations, 'organizationId');
+  const users = indexById(state.users, 'userId');
+  const developers = indexById(state.developers, 'developerId');
+  const models = indexById(state.models, 'modelId');
+  const builds = indexById(state.modelBuilds, 'modelBuildId');
+  const skus = indexById(state.modelSkus, 'skuId');
+  const orders = indexById(state.orders, 'orderId');
+  const entitlements = indexById(state.entitlements, 'entitlementId');
+  const devices = indexById(state.devices, 'deviceId');
+
+  [
+    ['organizations', state.organizations, 'organizationId'],
+    ['users', state.users, 'userId'],
+    ['developers', state.developers, 'developerId'],
+    ['models', state.models, 'modelId'],
+    ['modelBuilds', state.modelBuilds, 'modelBuildId'],
+    ['modelSkus', state.modelSkus, 'skuId'],
+    ['orders', state.orders, 'orderId'],
+    ['payments', state.payments, 'paymentId'],
+    ['entitlements', state.entitlements, 'entitlementId'],
+    ['devices', state.devices, 'deviceId'],
+    ['tickets', state.tickets, 'ticketId'],
+    ['leases', state.leases, 'leaseId'],
+    ['supportTickets', state.supportTickets, 'supportTicketId'],
+    ['customRequests', state.customRequests, 'customRequestId'],
+    ['invoices', state.invoices, 'invoiceId'],
+    ['settlements', state.settlements, 'settlementId'],
+    ['withdrawals', state.withdrawals, 'withdrawalId'],
+    ['coupons', state.coupons, 'couponId'],
+    ['activities', state.activities, 'activityId'],
+  ].forEach(([objectType, items, key]) => checkUniqueIds(issues, items, key, objectType));
+
+  const emails = new Set();
+  for (const user of state.users) {
+    if (user.email) {
+      const email = user.email.toLowerCase();
+      if (emails.has(email)) {
+        stateDoctorIssue(issues, 'error', 'duplicate_email', `duplicate user email: ${email}`, 'user', user.userId);
+      }
+      emails.add(email);
+    }
+    if (Object.prototype.hasOwnProperty.call(user, 'password')) {
+      stateDoctorIssue(issues, 'error', 'plain_password_present', 'user still has a plain password field', 'user', user.userId);
+    }
+    if (!user.passwordHash || !user.passwordSalt) {
+      stateDoctorIssue(issues, 'error', 'password_hash_missing', 'user is missing password hash or salt', 'user', user.userId);
+    }
+    checkReference(issues, organizations, user.organizationId, 'organization_missing', 'user organization is missing', 'user', user.userId);
+  }
+
+  for (const developer of state.developers) {
+    checkReference(issues, organizations, developer.organizationId, 'organization_missing', 'developer organization is missing', 'developer', developer.developerId);
+  }
+
+  for (const model of state.models) {
+    checkReference(issues, developers, model.developerId, 'developer_missing', 'model developer is missing', 'model', model.modelId);
+    checkReference(issues, builds, model.currentBuildId, 'build_missing', 'model current build is missing', 'model', model.modelId);
+  }
+
+  for (const build of state.modelBuilds) {
+    checkReference(issues, models, build.modelId, 'model_missing', 'model build parent model is missing', 'modelBuild', build.modelBuildId);
+    const sourceAbsolute = buildSourceAbsolutePath(build);
+    if (!sourceAbsolute) {
+      stateDoctorIssue(issues, 'error', 'source_path_missing', 'model build is missing sourcePath', 'modelBuild', build.modelBuildId);
+    } else if (!fsSync.existsSync(sourceAbsolute)) {
+      stateDoctorIssue(issues, 'error', 'source_file_missing', `model build source file is missing: ${sourceAbsolute}`, 'modelBuild', build.modelBuildId);
+    }
+  }
+
+  for (const sku of state.modelSkus) {
+    checkReference(issues, models, sku.modelId, 'model_missing', 'SKU model is missing', 'sku', sku.skuId);
+    checkReference(issues, builds, sku.buildId, 'build_missing', 'SKU build is missing', 'sku', sku.skuId);
+  }
+
+  for (const order of state.orders) {
+    checkReference(issues, organizations, order.buyerOrganizationId, 'organization_missing', 'order buyer organization is missing', 'order', order.orderId);
+    checkReference(issues, users, order.buyerUserId, 'user_missing', 'order buyer user is missing', 'order', order.orderId);
+    for (const item of order.items || []) {
+      checkReference(issues, skus, item.skuId, 'sku_missing', 'order item SKU is missing', 'order', order.orderId);
+      checkReference(issues, models, item.modelId, 'model_missing', 'order item model is missing', 'order', order.orderId);
+    }
+  }
+
+  for (const payment of state.payments) {
+    checkReference(issues, orders, payment.orderId, 'order_missing', 'payment order is missing', 'payment', payment.paymentId);
+  }
+
+  for (const entitlement of state.entitlements) {
+    checkReference(issues, organizations, entitlement.organizationId, 'organization_missing', 'entitlement organization is missing', 'entitlement', entitlement.entitlementId);
+    checkReference(issues, models, entitlement.modelId, 'model_missing', 'entitlement model is missing', 'entitlement', entitlement.entitlementId);
+    if (entitlement.modelSkuId) {
+      checkReference(issues, skus, entitlement.modelSkuId, 'sku_missing', 'entitlement SKU is missing', 'entitlement', entitlement.entitlementId);
+    }
+    if (entitlement.assignedToType === 'user') {
+      checkReference(issues, users, entitlement.assignedToId, 'assigned_user_missing', 'entitlement assigned user is missing', 'entitlement', entitlement.entitlementId);
+    } else if (entitlement.assignedToType === 'organization') {
+      checkReference(issues, organizations, entitlement.assignedToId, 'assigned_organization_missing', 'entitlement assigned organization is missing', 'entitlement', entitlement.entitlementId);
+    } else if (entitlement.assignedToType === 'device') {
+      checkReference(issues, devices, entitlement.assignedToId, 'assigned_device_missing', 'entitlement assigned device is missing', 'entitlement', entitlement.entitlementId, 'warning');
+    } else {
+      stateDoctorIssue(issues, 'error', 'assigned_type_invalid', `invalid entitlement assignedToType: ${entitlement.assignedToType}`, 'entitlement', entitlement.entitlementId);
+    }
+  }
+
+  for (const ticket of state.tickets) {
+    checkReference(issues, entitlements, ticket.entitlementId, 'entitlement_missing', 'download ticket entitlement is missing', 'ticket', ticket.ticketId);
+    checkReference(issues, users, ticket.userId, 'user_missing', 'download ticket user is missing', 'ticket', ticket.ticketId);
+    checkReference(issues, organizations, ticket.organizationId, 'organization_missing', 'download ticket organization is missing', 'ticket', ticket.ticketId);
+    checkReference(issues, models, ticket.modelId, 'model_missing', 'download ticket model is missing', 'ticket', ticket.ticketId);
+    checkReference(issues, builds, ticket.modelBuildId, 'build_missing', 'download ticket build is missing', 'ticket', ticket.ticketId);
+    if (ticket.status === 'issued' && new Date(ticket.expiresAt).getTime() <= now) {
+      stateDoctorIssue(issues, 'warning', 'issued_ticket_expired', 'download ticket is issued but expired', 'ticket', ticket.ticketId);
+    }
+  }
+
+  for (const lease of state.leases) {
+    checkReference(issues, entitlements, lease.entitlementId, 'entitlement_missing', 'lease entitlement is missing', 'lease', lease.leaseId);
+    checkReference(issues, users, lease.userId, 'user_missing', 'lease user is missing', 'lease', lease.leaseId);
+    checkReference(issues, organizations, lease.organizationId, 'organization_missing', 'lease organization is missing', 'lease', lease.leaseId);
+    checkReference(issues, models, lease.modelId, 'model_missing', 'lease model is missing', 'lease', lease.leaseId);
+  }
+
+  for (const supportTicket of state.supportTickets) {
+    checkReference(issues, organizations, supportTicket.organizationId, 'organization_missing', 'support ticket organization is missing', 'supportTicket', supportTicket.supportTicketId);
+    checkReference(issues, users, supportTicket.createdByUserId, 'user_missing', 'support ticket creator user is missing', 'supportTicket', supportTicket.supportTicketId);
+    if (supportTicket.modelId) {
+      checkReference(issues, models, supportTicket.modelId, 'model_missing', 'support ticket model is missing', 'supportTicket', supportTicket.supportTicketId, 'warning');
+    }
+  }
+
+  for (const request of state.customRequests) {
+    checkReference(issues, organizations, request.organizationId, 'organization_missing', 'custom request organization is missing', 'customRequest', request.customRequestId);
+    checkReference(issues, users, request.buyerUserId, 'user_missing', 'custom request buyer user is missing', 'customRequest', request.customRequestId);
+    for (const proposal of request.proposals || []) {
+      checkReference(issues, developers, proposal.developerId, 'developer_missing', 'custom request proposal developer is missing', 'customRequest', request.customRequestId);
+    }
+  }
+
+  for (const invoice of state.invoices) {
+    checkReference(issues, orders, invoice.orderId, 'order_missing', 'invoice order is missing', 'invoice', invoice.invoiceId);
+    checkReference(issues, organizations, invoice.organizationId, 'organization_missing', 'invoice organization is missing', 'invoice', invoice.invoiceId);
+    checkReference(issues, users, invoice.requestedByUserId, 'user_missing', 'invoice requester user is missing', 'invoice', invoice.invoiceId);
+  }
+
+  for (const settlement of state.settlements) {
+    checkReference(issues, orders, settlement.orderId, 'order_missing', 'settlement order is missing', 'settlement', settlement.settlementId);
+    checkReference(issues, developers, settlement.developerId, 'developer_missing', 'settlement developer is missing', 'settlement', settlement.settlementId);
+    checkReference(issues, models, settlement.modelId, 'model_missing', 'settlement model is missing', 'settlement', settlement.settlementId);
+  }
+
+  for (const withdrawal of state.withdrawals) {
+    checkReference(issues, developers, withdrawal.developerId, 'developer_missing', 'withdrawal developer is missing', 'withdrawal', withdrawal.withdrawalId);
+  }
+
+  const errors = issues.filter((issue) => issue.severity === 'error');
+  const warnings = issues.filter((issue) => issue.severity === 'warning');
+  return {
+    ok: errors.length === 0,
+    status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
+    now: isoNow(),
+    summary: {
+      errors: errors.length,
+      warnings: warnings.length,
+      issues: issues.length,
+    },
+    issues,
+  };
 }
 
 function canAccessSupportTicket(state, session, ticket) {
@@ -1003,10 +1479,28 @@ function buildModelLicense(entitlement, lease, deviceId) {
   };
 }
 
-async function collectArchiveEntries(rootPath, basePath = rootPath) {
+async function writeStreamChunk(stream, chunk) {
+  if (!chunk || chunk.length === 0) {
+    return;
+  }
+  if (!stream.write(chunk)) {
+    await once(stream, 'drain');
+  }
+}
+
+async function finishWriteStream(stream) {
+  stream.end();
+  await once(stream, 'finish');
+}
+
+async function collectArchiveFileEntries(rootPath, basePath = rootPath) {
   const stat = await fs.stat(rootPath);
   if (stat.isFile()) {
-    return [{ relativePath: path.basename(rootPath), bytes: await fs.readFile(rootPath) }];
+    return [{
+      relativePath: path.basename(rootPath),
+      absolutePath: rootPath,
+      byteCount: stat.size,
+    }];
   }
 
   const entries = [];
@@ -1014,58 +1508,128 @@ async function collectArchiveEntries(rootPath, basePath = rootPath) {
   for (const child of [...children].sort((a, b) => a.name.localeCompare(b.name))) {
     const absolute = path.join(rootPath, child.name);
     if (child.isDirectory()) {
-      entries.push(...await collectArchiveEntries(absolute, basePath));
+      entries.push(...await collectArchiveFileEntries(absolute, basePath));
     } else if (child.isFile()) {
+      const childStat = await fs.stat(absolute);
       entries.push({
         relativePath: path.relative(basePath, absolute).split(path.sep).join('/'),
-        bytes: await fs.readFile(absolute),
+        absolutePath: absolute,
+        byteCount: childStat.size,
       });
     }
   }
   return entries;
 }
 
-function buildBundleArchive(entries) {
+async function writeFileToArtifact(filePath, writer, hash) {
+  let byteCount = 0;
+  for await (const chunk of fsSync.createReadStream(filePath)) {
+    hash.update(chunk);
+    byteCount += chunk.length;
+    await writeStreamChunk(writer, chunk);
+  }
+  return byteCount;
+}
+
+async function writeHashedPart(writer, hash, buffer) {
+  hash.update(buffer);
+  await writeStreamChunk(writer, buffer);
+  return buffer.length;
+}
+
+async function writeBundleArchiveArtifact(rootPath, writer, hash) {
+  const entries = await collectArchiveFileEntries(rootPath);
   const header = Buffer.alloc(BUNDLE_ARCHIVE_MAGIC.length + 4 + 4);
   BUNDLE_ARCHIVE_MAGIC.copy(header, 0);
   header.writeUInt32LE(1, BUNDLE_ARCHIVE_MAGIC.length);
   header.writeUInt32LE(entries.length, BUNDLE_ARCHIVE_MAGIC.length + 4);
-  const parts = [header];
+  let byteCount = await writeHashedPart(writer, hash, header);
   for (const entry of entries) {
     const pathBuffer = Buffer.from(entry.relativePath, 'utf8');
     const entryHeader = Buffer.alloc(4 + 8);
     entryHeader.writeUInt32LE(pathBuffer.length, 0);
-    entryHeader.writeBigUInt64LE(BigInt(entry.bytes.length), 4);
-    parts.push(entryHeader, pathBuffer, entry.bytes);
+    entryHeader.writeBigUInt64LE(BigInt(entry.byteCount), 4);
+    byteCount += await writeHashedPart(writer, hash, entryHeader);
+    byteCount += await writeHashedPart(writer, hash, pathBuffer);
+    byteCount += await writeFileToArtifact(entry.absolutePath, writer, hash);
   }
-  return Buffer.concat(parts);
+  return byteCount;
 }
 
 function hashHex(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-async function getModelArtifact(build) {
-  const cacheKey = `${build.modelBuildId}:${build.sourcePath}`;
-  const cached = ARCHIVE_CACHE.get(cacheKey);
-  if (cached) {
-    return cached;
+async function readCachedArtifact(cachePath, cacheKey) {
+  try {
+    const [metadataText] = await Promise.all([
+      fs.readFile(`${cachePath}.json`, 'utf8'),
+      fs.access(cachePath),
+    ]);
+    const metadata = JSON.parse(metadataText);
+    if (metadata.cacheKey === cacheKey && metadata.cachePath === cachePath && metadata.byteCount >= 0 && metadata.sha256) {
+      return metadata;
+    }
+  } catch {
+    return null;
   }
+  return null;
+}
 
+async function getModelArtifact(build) {
+  await fs.mkdir(ARTIFACT_CACHE_ROOT, { recursive: true });
   const sourceAbsolute = path.isAbsolute(build.sourcePath)
     ? build.sourcePath
     : path.join(REPO_ROOT, build.sourcePath);
   const stats = await fs.stat(sourceAbsolute);
-  const bytes = stats.isDirectory() || build.transportFormat === 'bundle-archive'
-    ? buildBundleArchive(await collectArchiveEntries(sourceAbsolute))
-    : await fs.readFile(sourceAbsolute);
-  const artifact = {
-    bytes,
-    sha256: hashHex(bytes),
-    byteCount: bytes.length,
-  };
-  ARCHIVE_CACHE.set(cacheKey, artifact);
-  return artifact;
+  const cacheKey = [
+    build.modelBuildId,
+    sourceAbsolute,
+    build.transportFormat,
+    stats.mtimeMs,
+    stats.size,
+  ].join(':');
+  const cached = ARCHIVE_CACHE.get(cacheKey);
+  if (cached && fsSync.existsSync(cached.cachePath)) {
+    return cached;
+  }
+
+  const cacheName = `${safeFileName(build.modelBuildId, 'build')}-${shortHash(cacheKey)}.artifact`;
+  const cachePath = path.join(ARTIFACT_CACHE_ROOT, cacheName);
+  const metadata = await readCachedArtifact(cachePath, cacheKey);
+  if (metadata) {
+    ARCHIVE_CACHE.set(cacheKey, metadata);
+    return metadata;
+  }
+
+  const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+  const writer = fsSync.createWriteStream(tempPath, { flags: 'wx' });
+  const hash = crypto.createHash('sha256');
+  let byteCount = 0;
+  try {
+    if (stats.isDirectory() || build.transportFormat === 'bundle-archive') {
+      byteCount = await writeBundleArchiveArtifact(sourceAbsolute, writer, hash);
+    } else {
+      byteCount = await writeFileToArtifact(sourceAbsolute, writer, hash);
+    }
+    await finishWriteStream(writer);
+    const artifact = {
+      cacheKey,
+      cachePath,
+      sha256: hash.digest('hex'),
+      byteCount,
+      sourcePath: sourceAbsolute,
+      createdAt: isoNow(),
+    };
+    await fs.rename(tempPath, cachePath);
+    await fs.writeFile(`${cachePath}.json`, JSON.stringify(artifact, null, 2));
+    ARCHIVE_CACHE.set(cacheKey, artifact);
+    return artifact;
+  } catch (error) {
+    writer.destroy();
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function deriveTicketKey(ticket) {
@@ -1079,11 +1643,13 @@ function deriveTicketKey(ticket) {
     .digest();
 }
 
-function buildEncryptedEnvelope(plaintext, ticket) {
+async function buildEncryptedEnvelopeFile(artifact, ticket) {
+  await fs.mkdir(DOWNLOAD_WORK_ROOT, { recursive: true });
+  const envelopePath = path.join(DOWNLOAD_WORK_ROOT, `${safeFileName(ticket.ticketId, 'ticket')}.vinoenc`);
+  const tempPath = `${envelopePath}.${process.pid}.${Date.now()}.tmp`;
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, deriveTicketKey(ticket), iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
+  const tagLength = 16;
   const algorithmBuffer = Buffer.from(ENCRYPTION_ALGORITHM, 'utf8');
   const header = Buffer.alloc(ENCRYPTION_ENVELOPE_MAGIC.length + 4 + 4 + 4 + 4 + 8);
   let offset = 0;
@@ -1095,10 +1661,44 @@ function buildEncryptedEnvelope(plaintext, ticket) {
   offset += 4;
   header.writeUInt32LE(iv.length, offset);
   offset += 4;
-  header.writeUInt32LE(tag.length, offset);
+  header.writeUInt32LE(tagLength, offset);
   offset += 4;
-  header.writeBigUInt64LE(BigInt(ciphertext.length), offset);
-  return Buffer.concat([header, algorithmBuffer, iv, tag, ciphertext]);
+  header.writeBigUInt64LE(BigInt(artifact.byteCount), offset);
+
+  const tagOffset = header.length + algorithmBuffer.length + iv.length;
+  const prelude = Buffer.concat([header, algorithmBuffer, iv, Buffer.alloc(tagLength)]);
+  await fs.writeFile(tempPath, prelude, { flag: 'wx' });
+  const writer = fsSync.createWriteStream(tempPath, { flags: 'a' });
+  let ciphertextLength = 0;
+
+  try {
+    for await (const chunk of fsSync.createReadStream(artifact.cachePath)) {
+      const encrypted = cipher.update(chunk);
+      ciphertextLength += encrypted.length;
+      await writeStreamChunk(writer, encrypted);
+    }
+    const final = cipher.final();
+    ciphertextLength += final.length;
+    await writeStreamChunk(writer, final);
+    await finishWriteStream(writer);
+
+    const file = await fs.open(tempPath, 'r+');
+    try {
+      const tag = cipher.getAuthTag();
+      await file.write(tag, 0, tag.length, tagOffset);
+    } finally {
+      await file.close();
+    }
+    await fs.rename(tempPath, envelopePath);
+    return {
+      filePath: envelopePath,
+      byteCount: prelude.length + ciphertextLength,
+    };
+  } catch (error) {
+    writer.destroy();
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 async function terminalModelDescriptor(state, session, model, entitlement) {
@@ -1145,12 +1745,13 @@ async function listEntitledModels(state, session) {
 }
 
 function createSession(state, user, body) {
-  const accessToken = crypto.randomUUID().replace(/-/g, '');
+  const accessToken = crypto.randomBytes(32).toString('hex');
   const organization = state.organizations.find((item) => item.organizationId === user.organizationId);
   const session = {
+    sessionId: `sess-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
     accessToken,
     tokenType: 'Bearer',
-    expiresAt: plusDays(7),
+    expiresAt: plusDays(SESSION_TTL_DAYS),
     userId: user.userId,
     email: user.email,
     displayName: user.displayName,
@@ -1161,7 +1762,10 @@ function createSession(state, user, body) {
     deviceName: body.deviceName || 'web-console',
     platform: body.platform || 'web',
     createdAt: isoNow(),
+    lastSeenAt: isoNow(),
+    revokedAt: null,
   };
+  pruneSessions(state);
   state.sessions = state.sessions.filter((item) => item.userId !== user.userId || item.deviceId !== session.deviceId);
   state.sessions.push(session);
   return session;
@@ -1417,7 +2021,7 @@ async function serveStatic(req, res) {
   const filePath = pathname === '/'
     ? path.join(PUBLIC_ROOT, 'index.html')
     : path.join(PUBLIC_ROOT, pathname.replace(/^\/+/, ''));
-  if (!filePath.startsWith(PUBLIC_ROOT) || !fsSync.existsSync(filePath)) {
+  if (!isPathInside(PUBLIC_ROOT, filePath) || !fsSync.existsSync(filePath)) {
     return false;
   }
   const ext = path.extname(filePath);
@@ -1428,6 +2032,391 @@ async function serveStatic(req, res) {
       : 'text/html; charset=utf-8';
   sendBuffer(res, 200, await fs.readFile(filePath), contentType);
   return true;
+}
+
+async function checkReady() {
+  await ensureDirs();
+  const probePath = path.join(DATA_ROOT, `.ready-${process.pid}-${Date.now()}`);
+  await fs.writeFile(probePath, 'ok');
+  await fs.rm(probePath, { force: true });
+  return {
+    service: 'vino_platform',
+    status: 'ok',
+    now: isoNow(),
+    dataRoot: DATA_ROOT,
+    statePath: STATE_PATH,
+    modelUploadRoot: MODEL_UPLOAD_ROOT,
+    artifactCacheRoot: ARTIFACT_CACHE_ROOT,
+    downloadWorkRoot: DOWNLOAD_WORK_ROOT,
+    modelsRoot: MODELS_ROOT,
+    modelsRootExists: fsSync.existsSync(MODELS_ROOT),
+  };
+}
+
+async function fileSummary(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return {
+      path: filePath,
+      exists: true,
+      isDirectory: stat.isDirectory(),
+      sizeBytes: stat.size,
+      modifiedAt: stat.mtime.toISOString(),
+    };
+  } catch {
+    return {
+      path: filePath,
+      exists: false,
+    };
+  }
+}
+
+async function directorySummary(directoryPath, { maxEntries = 5000, staleMs = 60 * 60 * 1000 } = {}) {
+  const summary = {
+    path: directoryPath,
+    exists: false,
+    fileCount: 0,
+    directoryCount: 0,
+    totalBytes: 0,
+    scannedEntries: 0,
+    truncated: false,
+    staleFileCount: 0,
+    newestModifiedAt: null,
+    oldestModifiedAt: null,
+  };
+  if (!fsSync.existsSync(directoryPath)) {
+    return summary;
+  }
+  summary.exists = true;
+  const now = Date.now();
+  const stack = [directoryPath];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (summary.scannedEntries >= maxEntries) {
+        summary.truncated = true;
+        return summary;
+      }
+      summary.scannedEntries += 1;
+      const absolute = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        summary.directoryCount += 1;
+        stack.push(absolute);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const stat = await fs.stat(absolute);
+      const modifiedAt = stat.mtime.toISOString();
+      summary.fileCount += 1;
+      summary.totalBytes += stat.size;
+      if (now - stat.mtimeMs > staleMs) {
+        summary.staleFileCount += 1;
+      }
+      if (!summary.newestModifiedAt || modifiedAt > summary.newestModifiedAt) {
+        summary.newestModifiedAt = modifiedAt;
+      }
+      if (!summary.oldestModifiedAt || modifiedAt < summary.oldestModifiedAt) {
+        summary.oldestModifiedAt = modifiedAt;
+      }
+    }
+  }
+  return summary;
+}
+
+async function latestBackupSummary() {
+  const summary = await directorySummary(BACKUP_ROOT, { maxEntries: 1000, staleMs: 7 * 24 * 60 * 60 * 1000 });
+  if (!summary.exists) {
+    return {
+      ...summary,
+      latest: null,
+    };
+  }
+  const entries = await fs.readdir(BACKUP_ROOT, { withFileTypes: true }).catch(() => []);
+  const backups = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^state-.+\.json\.gz$/.test(entry.name)) {
+      continue;
+    }
+    const filePath = path.join(BACKUP_ROOT, entry.name);
+    const stat = await fs.stat(filePath);
+    backups.push({
+      path: filePath,
+      sizeBytes: stat.size,
+      modifiedAt: stat.mtime.toISOString(),
+    });
+  }
+  backups.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+  return {
+    ...summary,
+    backupCount: backups.length,
+    latest: backups[0] || null,
+  };
+}
+
+async function statfsSummary(directoryPath) {
+  if (typeof fs.statfs !== 'function' || !fsSync.existsSync(directoryPath)) {
+    return null;
+  }
+  try {
+    const stat = await fs.statfs(directoryPath);
+    return {
+      path: directoryPath,
+      blockSize: stat.bsize,
+      totalBytes: Number(stat.blocks) * Number(stat.bsize),
+      freeBytes: Number(stat.bfree) * Number(stat.bsize),
+      availableBytes: Number(stat.bavail) * Number(stat.bsize),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function buildOpsStatus(state) {
+  const now = Date.now();
+  const stateFile = await fileSummary(STATE_PATH);
+  const backups = await latestBackupSummary();
+  const artifactCache = await directorySummary(ARTIFACT_CACHE_ROOT, { staleMs: 30 * 24 * 60 * 60 * 1000 });
+  const downloadWork = await directorySummary(DOWNLOAD_WORK_ROOT, { staleMs: 60 * 60 * 1000 });
+  const risks = [];
+  const deployEnv = String(process.env.VINO_DEPLOY_ENV || process.env.NODE_ENV || 'development');
+  const isProduction = deployEnv.toLowerCase() === 'production';
+
+  if (!EXTERNAL_BASE_URL) {
+    risks.push({ severity: isProduction ? 'high' : 'medium', code: 'external_base_url_missing', message: 'VINO_EXTERNAL_BASE_URL is not set.' });
+  }
+  if (isProduction && EXTERNAL_BASE_URL && !EXTERNAL_BASE_URL.startsWith('https://')) {
+    risks.push({ severity: 'high', code: 'external_base_url_not_https', message: 'production external URL should use HTTPS.' });
+  }
+  if (SEED_DEMO_DATA) {
+    risks.push({ severity: isProduction ? 'high' : 'low', code: 'demo_seed_enabled', message: 'demo seed data is enabled.' });
+  }
+  if (!backups.latest) {
+    risks.push({ severity: 'medium', code: 'backup_missing', message: 'no state backup found.' });
+  }
+  if (downloadWork.fileCount > 0) {
+    risks.push({ severity: downloadWork.staleFileCount > 0 ? 'medium' : 'low', code: 'download_work_not_empty', message: 'download work directory contains temporary files.' });
+  }
+  if (stateFile.exists && stateFile.sizeBytes > 50 * 1024 * 1024) {
+    risks.push({ severity: 'medium', code: 'state_file_large', message: 'state.json is growing large for file-backed storage.' });
+  }
+
+  return {
+    service: 'vino_platform',
+    status: risks.some((risk) => risk.severity === 'high') ? 'risk' : 'ok',
+    now: isoNow(),
+    runtime: {
+      pid: process.pid,
+      nodeVersion: process.version,
+      uptimeSeconds: Math.round(process.uptime()),
+      memory: process.memoryUsage(),
+      stateQueueDepth: STATE_OPERATION_QUEUE_DEPTH,
+      stateLastErrorAt: STATE_OPERATION_LAST_ERROR_AT,
+    },
+    config: {
+      deployEnv,
+      host: HOST,
+      port: PORT,
+      externalBaseUrl: EXTERNAL_BASE_URL || null,
+      seedDemoData: SEED_DEMO_DATA,
+      skipModelDiscovery: SKIP_MODEL_DISCOVERY,
+      requestBodyLimitBytes: REQUEST_BODY_LIMIT_BYTES,
+      sessionTtlDays: SESSION_TTL_DAYS,
+      rateLimit: {
+        enabled: RATE_LIMIT_ENABLED,
+        windowMs: RATE_LIMIT_WINDOW_MS,
+        max: RATE_LIMIT_MAX,
+        authMax: RATE_LIMIT_AUTH_MAX,
+        buckets: RATE_LIMIT_BUCKETS.size,
+      },
+    },
+    paths: {
+      dataRoot: DATA_ROOT,
+      statePath: STATE_PATH,
+      modelsRoot: MODELS_ROOT,
+      modelUploadRoot: MODEL_UPLOAD_ROOT,
+      artifactCacheRoot: ARTIFACT_CACHE_ROOT,
+      downloadWorkRoot: DOWNLOAD_WORK_ROOT,
+      backupRoot: BACKUP_ROOT,
+    },
+    storage: {
+      stateFile,
+      dataRoot: await directorySummary(DATA_ROOT, { maxEntries: 10000, staleMs: 30 * 24 * 60 * 60 * 1000 }),
+      artifactCache,
+      downloadWork,
+      backups,
+      filesystem: await statfsSummary(DATA_ROOT),
+    },
+    collections: {
+      organizations: state.organizations.length,
+      users: state.users.length,
+      sessions: state.sessions.length,
+      activeSessions: state.sessions.filter((item) => !item.revokedAt && new Date(item.expiresAt).getTime() > now).length,
+      models: state.models.length,
+      modelBuilds: state.modelBuilds.length,
+      modelSkus: state.modelSkus.length,
+      orders: state.orders.length,
+      entitlements: state.entitlements.length,
+      tickets: state.tickets.length,
+      issuedTickets: state.tickets.filter((item) => item.status === 'issued').length,
+      usedTickets: state.tickets.filter((item) => item.status === 'used').length,
+      expiredIssuedTickets: state.tickets.filter((item) => item.status === 'issued' && new Date(item.expiresAt).getTime() <= now).length,
+      leases: state.leases.length,
+      auditLogs: state.auditLogs.length,
+      ingestAssets: state.ingests.assets.length,
+      ingestResults: state.ingests.results.length,
+    },
+    risks,
+  };
+}
+
+function maintenanceOptions(input = {}) {
+  return {
+    dryRun: input.dryRun === true,
+    ticketRetentionDays: parseNonNegativeInt(input.ticketRetentionDays, MAINTENANCE_TICKET_RETENTION_DAYS),
+    downloadWorkRetentionMinutes: parseNonNegativeInt(input.downloadWorkRetentionMinutes, MAINTENANCE_DOWNLOAD_WORK_RETENTION_MINUTES),
+    artifactCacheRetentionDays: parseNonNegativeInt(input.artifactCacheRetentionDays, MAINTENANCE_ARTIFACT_CACHE_RETENTION_DAYS),
+    cleanArtifactCache: input.cleanArtifactCache === true,
+  };
+}
+
+function shouldRemoveTicket(ticket, now, retentionMs) {
+  if (!ticket) {
+    return true;
+  }
+  const expiresAt = new Date(ticket.expiresAt || 0).getTime();
+  const usedAt = new Date(ticket.usedAt || 0).getTime();
+  const revokedAt = new Date(ticket.revokedAt || 0).getTime();
+  const createdAt = new Date(ticket.createdAt || 0).getTime();
+  const inactive = ticket.status === 'used' || ticket.status === 'revoked' || expiresAt <= now;
+  if (!inactive) {
+    return false;
+  }
+  const terminalAt = ticket.status === 'used'
+    ? (usedAt || createdAt)
+    : ticket.status === 'revoked'
+      ? (revokedAt || createdAt)
+      : (expiresAt || createdAt);
+  return terminalAt > 0 && terminalAt <= now - retentionMs;
+}
+
+function compactOperationalState(state, options) {
+  const now = Date.now();
+  const ticketRetentionMs = options.ticketRetentionDays * 24 * 60 * 60 * 1000;
+  const sessionsBefore = state.sessions.length;
+  const ticketsBefore = state.tickets.length;
+  const activeSessions = state.sessions.filter((session) =>
+    session && !session.revokedAt && new Date(session.expiresAt).getTime() > now
+  );
+  const keptTickets = state.tickets.filter((ticket) => !shouldRemoveTicket(ticket, now, ticketRetentionMs));
+
+  if (!options.dryRun) {
+    state.sessions = activeSessions;
+    state.tickets = keptTickets;
+  }
+
+  return {
+    sessionsBefore,
+    sessionsAfter: activeSessions.length,
+    sessionsRemoved: sessionsBefore - activeSessions.length,
+    ticketsBefore,
+    ticketsAfter: keptTickets.length,
+    ticketsRemoved: ticketsBefore - keptTickets.length,
+  };
+}
+
+async function cleanupDirectoryFiles(directoryPath, { olderThanMs, dryRun, maxEntries = 10000 } = {}) {
+  const summary = {
+    path: directoryPath,
+    exists: fsSync.existsSync(directoryPath),
+    scannedFiles: 0,
+    removedFiles: 0,
+    removedBytes: 0,
+    truncated: false,
+    errors: [],
+  };
+  if (!summary.exists) {
+    return summary;
+  }
+
+  const cutoff = Date.now() - olderThanMs;
+  const stack = [directoryPath];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch (error) {
+      summary.errors.push({ path: current, message: error.message });
+      continue;
+    }
+    for (const entry of entries) {
+      if (summary.scannedFiles >= maxEntries) {
+        summary.truncated = true;
+        return summary;
+      }
+      const absolute = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(absolute);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      summary.scannedFiles += 1;
+      try {
+        const stat = await fs.stat(absolute);
+        if (stat.mtimeMs > cutoff) {
+          continue;
+        }
+        summary.removedFiles += 1;
+        summary.removedBytes += stat.size;
+        if (!dryRun) {
+          await fs.rm(absolute, { force: true });
+        }
+      } catch (error) {
+        summary.errors.push({ path: absolute, message: error.message });
+      }
+    }
+  }
+  return summary;
+}
+
+async function runMaintenance(state, input = {}) {
+  const options = maintenanceOptions(input);
+  const stateCompaction = compactOperationalState(state, options);
+  const downloadWorkCleanup = await cleanupDirectoryFiles(DOWNLOAD_WORK_ROOT, {
+    olderThanMs: options.downloadWorkRetentionMinutes * 60 * 1000,
+    dryRun: options.dryRun,
+  });
+  const artifactCacheCleanup = options.cleanArtifactCache
+    ? await cleanupDirectoryFiles(ARTIFACT_CACHE_ROOT, {
+      olderThanMs: options.artifactCacheRetentionDays * 24 * 60 * 60 * 1000,
+      dryRun: options.dryRun,
+    })
+    : null;
+
+  return {
+    ok: true,
+    dryRun: options.dryRun,
+    options,
+    state: stateCompaction,
+    files: {
+      downloadWork: downloadWorkCleanup,
+      artifactCache: artifactCacheCleanup,
+    },
+    changed: stateCompaction.sessionsRemoved > 0
+      || stateCompaction.ticketsRemoved > 0
+      || downloadWorkCleanup.removedFiles > 0
+      || (artifactCacheCleanup?.removedFiles || 0) > 0,
+  };
 }
 
 function createEntitlementFromOrderItem(state, order, item, actor) {
@@ -1698,6 +2687,17 @@ async function handleLogin(state, req, res) {
   });
 }
 
+async function handleLogout(state, req, res) {
+  const token = authTokenFromRequest(req);
+  const session = getSessionFromToken(state, token);
+  if (session) {
+    session.revokedAt = isoNow();
+    audit(state, session, 'auth.logout', 'session', session.sessionId || session.accessToken, { platform: session.platform });
+    await writeState(state);
+  }
+  sendJson(res, 200, { ok: true });
+}
+
 async function handleIngest(state, req, res, kind) {
   const body = parseJsonBuffer(await readBody(req));
   const id = body.idempotencyKey || body[`${kind}Id`] || `${kind}-${crypto.randomUUID()}`;
@@ -1756,10 +2756,10 @@ async function handleIngest(state, req, res, kind) {
 
 async function handleRoute(req, res) {
   const pathname = normalizePathname(req.url);
-  const state = await readState();
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
+      'X-Request-Id': res.requestId || '',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
@@ -1768,17 +2768,37 @@ async function handleRoute(req, res) {
     return;
   }
 
-  if (await serveStatic(req, res)) {
+  if (!applyRateLimit(req, res, pathname)) {
     return;
   }
 
-  if (req.method === 'GET' && (pathname === '/api/platform/v1/health' || pathname === '/api/cloud/v1/health')) {
+  if (req.method === 'GET' && pathname === '/healthz') {
     sendJson(res, 200, { service: 'vino_platform', status: 'ok', now: isoNow() });
     return;
   }
 
+  if (req.method === 'GET' && (pathname === '/readyz' || pathname === '/api/platform/v1/health' || pathname === '/api/cloud/v1/health')) {
+    sendJson(res, 200, await checkReady());
+    return;
+  }
+
+  if (await serveStatic(req, res)) {
+    return;
+  }
+
+  return withStateLock(() => handleStateRoute(req, res, pathname));
+}
+
+async function handleStateRoute(req, res, pathname) {
+  const state = await readState();
+
   if (req.method === 'POST' && (pathname === '/api/platform/v1/auth/login' || pathname === '/api/cloud/v1/auth/login')) {
     await handleLogin(state, req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && (pathname === '/api/platform/v1/auth/logout' || pathname === '/api/cloud/v1/auth/logout')) {
+    await handleLogout(state, req, res);
     return;
   }
 
@@ -1799,6 +2819,30 @@ async function handleRoute(req, res) {
   if (req.method === 'GET' && pathname === '/api/platform/v1/dashboard/overview') {
     const session = requireSession(state, req);
     sendJson(res, 200, await buildRoleOverview(state, session));
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/v1/admin/ops/status') {
+    requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    sendJson(res, 200, await buildOpsStatus(state));
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/v1/admin/ops/doctor') {
+    requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    sendJson(res, 200, buildStateDoctor(state));
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/v1/admin/ops/maintenance') {
+    const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops']);
+    const body = parseJsonBuffer(await readBody(req));
+    const result = await runMaintenance(state, body);
+    if (!result.dryRun && result.changed) {
+      audit(state, actor, 'ops.maintenance', 'ops', 'maintenance', result);
+      await writeState(state);
+    }
+    sendJson(res, 200, result);
     return;
   }
 
@@ -3166,7 +4210,7 @@ async function handleRoute(req, res) {
         keyDerivation: 'sha256(ticketSecret:modelId:deviceId:modelBuildId)',
         ticketSecret: ticket.ticketSecret,
       } : null,
-      downloadURL: `http://${req.headers.host}/api/cloud/v1/download/${ticket.ticketId}`,
+      downloadURL: `${requestBaseUrl(req)}/api/cloud/v1/download/${ticket.ticketId}`,
     });
     return;
   }
@@ -3191,7 +4235,14 @@ async function handleRoute(req, res) {
     ticket.usedAt = isoNow();
     audit(state, null, 'download_ticket.used', 'download_ticket', ticket.ticketId, { modelId: ticket.modelId });
     await writeState(state);
-    sendBuffer(res, 200, ticket.isEncrypted ? buildEncryptedEnvelope(artifact.bytes, ticket) : artifact.bytes);
+    if (ticket.isEncrypted) {
+      const envelope = await buildEncryptedEnvelopeFile(artifact, ticket);
+      sendFile(res, 200, envelope.filePath, envelope.byteCount, 'application/octet-stream', () => {
+        fs.rm(envelope.filePath, { force: true }).catch(() => {});
+      });
+    } else {
+      sendFile(res, 200, artifact.cachePath, artifact.byteCount);
+    }
     return;
   }
 
@@ -3252,24 +4303,23 @@ async function handleRoute(req, res) {
     return;
   }
 
-  sendJson(res, 404, { error: { code: 'not_found', message: 'route not found' } });
+  sendError(res, 404, 'not_found', 'route not found');
 }
 
 const server = http.createServer((req, res) => {
+  res.requestId = requestIdFromRequest(req);
   handleRoute(req, res).catch((error) => {
     const statusCode = error.statusCode || 500;
     if (statusCode >= 500) {
-      console.error(error);
+      console.error(`[${res.requestId}]`, error);
     }
-    sendJson(res, statusCode, {
-      error: {
-        code: error.code || 'internal_error',
-        message: error.message || 'internal error',
-      },
-    });
+    sendError(res, statusCode, error.code || 'internal_error', error.message || 'internal error', error.details);
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`vino_platform listening on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`vino_platform listening on http://${HOST}:${PORT}`);
+  console.log(`vino_platform data root: ${DATA_ROOT}`);
+  console.log(`vino_platform models root: ${MODELS_ROOT}`);
+  console.log(`vino_platform rate limit: ${RATE_LIMIT_ENABLED ? `${RATE_LIMIT_MAX}/${RATE_LIMIT_WINDOW_MS}ms` : 'disabled'}`);
 });

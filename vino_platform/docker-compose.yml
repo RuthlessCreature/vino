@@ -1,0 +1,44 @@
+services:
+  vino-platform:
+    build:
+      context: ..
+      dockerfile: vino_platform/Dockerfile
+    image: vino-platform:latest
+    container_name: vino-platform
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${PORT:-8797}
+      VINO_DATA_ROOT: /app/data
+      VINO_STATE_PATH: /app/data/state.json
+      VINO_INGEST_ASSET_ROOT: /app/data/assets
+      VINO_MODEL_UPLOAD_ROOT: /app/data/model-builds
+      VINO_ARTIFACT_CACHE_ROOT: ${VINO_ARTIFACT_CACHE_ROOT:-/app/data/artifact-cache}
+      VINO_DOWNLOAD_WORK_ROOT: ${VINO_DOWNLOAD_WORK_ROOT:-/app/data/download-work}
+      VINO_BACKUP_ROOT: ${VINO_BACKUP_ROOT:-/app/data/backups}
+      VINO_MODELS_ROOT: /app/models
+      VINO_REQUEST_BODY_LIMIT: ${VINO_REQUEST_BODY_LIMIT:-200mb}
+      VINO_RATE_LIMIT_ENABLED: ${VINO_RATE_LIMIT_ENABLED:-true}
+      VINO_RATE_LIMIT_WINDOW_MS: ${VINO_RATE_LIMIT_WINDOW_MS:-60000}
+      VINO_RATE_LIMIT_MAX: ${VINO_RATE_LIMIT_MAX:-600}
+      VINO_RATE_LIMIT_AUTH_MAX: ${VINO_RATE_LIMIT_AUTH_MAX:-30}
+      VINO_TICKET_RETENTION_DAYS: ${VINO_TICKET_RETENTION_DAYS:-30}
+      VINO_DOWNLOAD_WORK_RETENTION_MINUTES: ${VINO_DOWNLOAD_WORK_RETENTION_MINUTES:-60}
+      VINO_ARTIFACT_CACHE_RETENTION_DAYS: ${VINO_ARTIFACT_CACHE_RETENTION_DAYS:-30}
+      VINO_EXTERNAL_BASE_URL: ${VINO_EXTERNAL_BASE_URL:-http://127.0.0.1:8797}
+      VINO_SESSION_TTL_DAYS: ${VINO_SESSION_TTL_DAYS:-7}
+      VINO_SEED_DEMO_DATA: ${VINO_SEED_DEMO_DATA:-true}
+      VINO_BOOTSTRAP_ADMIN_EMAIL: ${VINO_BOOTSTRAP_ADMIN_EMAIL:-admin}
+      VINO_BOOTSTRAP_ADMIN_PASSWORD: ${VINO_BOOTSTRAP_ADMIN_PASSWORD:-}
+      VINO_SKIP_MODEL_DISCOVERY: ${VINO_SKIP_MODEL_DISCOVERY:-0}
+    ports:
+      - "${PORT:-8797}:8797"
+    volumes:
+      - ${VINO_DATA_DIR:-./data}:/app/data
+      - ${VINO_MODELS_DIR:-../models}:/app/models:ro
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

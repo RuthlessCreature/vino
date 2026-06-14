@@ -1190,9 +1190,17 @@ els.copyTerminalEndpointButton.addEventListener('click', async () => {
   }
 });
 
-els.logoutButton.addEventListener('click', () => {
-  clearSession();
-  syncShell();
+els.logoutButton.addEventListener('click', async () => {
+  try {
+    if (state.token) {
+      await fetchJson('/api/platform/v1/auth/logout', { method: 'POST' });
+    }
+  } catch (error) {
+    console.warn(error);
+  } finally {
+    clearSession();
+    syncShell();
+  }
 });
 
 els.refreshButton.addEventListener('click', async () => {

@@ -1,0 +1,11 @@
+.git
+.DS_Store
+docs/__pycache__
+docs/*.pptx
+docs/~$*.pptx
+models
+vino_Desktop/build_cmake
+vino_Desktop/dist
+vino_platform/data
+**/node_modules
+**/__pycache__

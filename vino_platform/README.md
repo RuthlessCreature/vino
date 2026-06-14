@@ -53,9 +53,19 @@ npm start
 可配置环境变量：
 
 - `PORT`：Web 服务端口，默认 `8797`。
+- `HOST`：监听地址，Docker/ECS 默认 `0.0.0.0`。
 - `VINO_DATA_ROOT`：本地数据目录，默认 `vino_platform/data`。
 - `VINO_STATE_PATH`：状态文件路径，默认 `VINO_DATA_ROOT/state.json`。
 - `VINO_MODEL_UPLOAD_ROOT`：开发者上传模型构建的落盘目录。
+- `VINO_ARTIFACT_CACHE_ROOT`：模型 artifact 落盘缓存目录，默认 `VINO_DATA_ROOT/artifact-cache`。
+- `VINO_DOWNLOAD_WORK_ROOT`：一次性加密下载包临时目录，默认 `VINO_DATA_ROOT/download-work`。
+- `VINO_BACKUP_ROOT`：`state.json` 备份目录，默认 `VINO_DATA_ROOT/backups`。
+- `VINO_EXTERNAL_BASE_URL`：返回给 iPhone 下载票据的公网根地址，绑定域名或反代 HTTPS 后必须设置。
+- `VINO_REQUEST_BODY_LIMIT`：JSON 请求体上限，默认 `200mb`。
+- `VINO_RATE_LIMIT_ENABLED` / `VINO_RATE_LIMIT_MAX` / `VINO_RATE_LIMIT_AUTH_MAX`：基础内存限频，默认每 IP 每分钟 600 次，登录口 30 次。
+- `VINO_TICKET_RETENTION_DAYS` / `VINO_DOWNLOAD_WORK_RETENTION_MINUTES` / `VINO_ARTIFACT_CACHE_RETENTION_DAYS`：维护清理保留期。
+- `VINO_SESSION_TTL_DAYS`：Web 与终端 API token 有效天数，默认 `7`。
+- `VINO_SEED_DEMO_DATA=false`：关闭默认演示账号注入，公开 ECS 首次启动建议配合 `VINO_BOOTSTRAP_ADMIN_PASSWORD` 使用。
 - `VINO_SKIP_MODEL_DISCOVERY=1`：跳过仓库 `models/` 自动发现，适合隔离测试。
 
 回归测试：
@@ -65,6 +75,51 @@ npm test
 ```
 
 测试会使用临时数据目录和临时端口启动平台，不会污染当前演示数据。
+
+Docker / ECS 单容器启动：
+
+```sh
+cp .env.example .env
+npm run deploy:check
+docker compose up -d --build
+docker compose ps
+```
+
+生产入口建议用 Nginx/SLB 做 HTTPS 反代，并把 `.env` 里的 `VINO_EXTERNAL_BASE_URL` 改成最终公网 HTTPS 地址。详细步骤见 [docs/09-ecs-docker-deploy.md](docs/09-ecs-docker-deploy.md)。
+
+文件态备份和恢复：
+
+```sh
+npm run backup
+npm run restore -- ./data/backups/state-YYYY-MM-DDTHH-MM-SS.json.gz
+npm run doctor
+npm run maintenance -- --dry-run
+npm run maintenance
+```
+
+模型下载压测：
+
+```sh
+npm run test:download
+VINO_STRESS_MODEL_MB=500 npm run test:download
+```
+
+压测脚本会创建临时 `.mlmodel`，走终端登录、模型同步、下载票据和加密下载，并用流式读取统计下载字节数。
+
+文件态运行说明：
+
+- 单个 Node 进程内会对所有读取/写入 `state.json` 的 API 做串行化，避免并发请求互相覆盖状态。
+- 不要在同一份 `/app/data/state.json` 前面横向扩多个容器；要横向扩展时先迁 PostgreSQL / 对象存储。
+
+运维状态接口：
+
+```text
+GET /api/platform/v1/admin/ops/status
+GET /api/platform/v1/admin/ops/doctor
+POST /api/platform/v1/admin/ops/maintenance
+```
+
+这些接口需要平台管理员、管理员或平台运营 token。`ops/status` 会返回运行时、配置风险、`state.json`、备份、缓存、下载工作目录、ticket/session 和核心集合计数；`ops/doctor` 会检查重复 ID、引用完整性、明文密码、模型源文件和交易授权关系；`ops/maintenance` 会清理失效 session、过期/已用 ticket 和残留下载临时文件，`dryRun=true` 时只预览。
 
 演示账号：
 

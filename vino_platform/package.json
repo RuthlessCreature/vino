@@ -5,6 +5,13 @@
   "description": "vino model commerce, licensing, delivery and admin platform",
   "scripts": {
     "start": "node server.js",
-    "test": "node scripts/e2e-platform-smoke.js"
+    "test": "node scripts/e2e-platform-smoke.js",
+    "healthcheck": "node scripts/healthcheck.js",
+    "backup": "node scripts/backup-state.js",
+    "restore": "node scripts/restore-state.js",
+    "doctor": "node scripts/doctor-state.js",
+    "maintenance": "node scripts/maintenance.js",
+    "deploy:check": "node scripts/deploy-check.js",
+    "test:download": "node scripts/download-stress.js"
   }
 }

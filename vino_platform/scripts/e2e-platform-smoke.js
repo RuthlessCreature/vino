@@ -5,9 +5,28 @@ const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
+let requestCounter = 0;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function stopChild(child) {
+  if (child.exitCode !== null) {
+    return;
+  }
+  child.kill('SIGTERM');
+  await Promise.race([
+    new Promise((resolve) => child.once('exit', resolve)),
+    delay(2000),
+  ]);
+  if (child.exitCode === null) {
+    child.kill('SIGKILL');
+    await Promise.race([
+      new Promise((resolve) => child.once('exit', resolve)),
+      delay(2000),
+    ]);
+  }
 }
 
 async function waitForServer(baseUrl, child) {
@@ -30,10 +49,12 @@ async function waitForServer(baseUrl, child) {
 }
 
 async function api(baseUrl, pathName, { token, method = 'GET', body, headers = {} } = {}) {
+  requestCounter += 1;
   const response = await fetch(`${baseUrl}${pathName}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      'X-Forwarded-For': `203.0.113.${1 + (requestCounter % 200)}`,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
@@ -77,14 +98,20 @@ async function login(baseUrl, email, password, deviceId = 'web-console') {
 async function main() {
   const port = 18000 + Math.floor(Math.random() * 2000);
   const baseUrl = `http://127.0.0.1:${port}`;
+  const externalBaseUrl = 'https://platform.example.test';
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vino-platform-e2e-'));
   const env = {
     ...process.env,
     PORT: String(port),
+    VINO_EXTERNAL_BASE_URL: externalBaseUrl,
     VINO_DATA_ROOT: tempRoot,
     VINO_STATE_PATH: path.join(tempRoot, 'state.json'),
     VINO_MODEL_UPLOAD_ROOT: path.join(tempRoot, 'model-builds'),
+    VINO_ARTIFACT_CACHE_ROOT: path.join(tempRoot, 'artifact-cache'),
+    VINO_DOWNLOAD_WORK_ROOT: path.join(tempRoot, 'download-work'),
     VINO_INGEST_ASSET_ROOT: path.join(tempRoot, 'assets'),
+    VINO_RATE_LIMIT_MAX: '8',
+    VINO_RATE_LIMIT_AUTH_MAX: '4',
     VINO_SKIP_MODEL_DISCOVERY: '1',
   };
   const child = spawn(process.execPath, ['server.js'], {
@@ -99,14 +126,47 @@ async function main() {
   try {
     await waitForServer(baseUrl, child);
 
+    const health = await api(baseUrl, '/healthz');
+    assert.equal(health.status, 'ok');
+    const ready = await api(baseUrl, '/readyz');
+    assert.equal(ready.status, 'ok');
+    assert.equal(ready.artifactCacheRoot, path.resolve(tempRoot, 'artifact-cache'));
+
     const admin = await login(baseUrl, 'admin', 'meiyoumima');
     const buyer = await login(baseUrl, 'buyer@vino.cc', 'demo123');
     const operator = await login(baseUrl, 'demo@vino.cc', 'demo123', 'e2e-iphone-001');
     const developer = await login(baseUrl, 'developer@vino.cc', 'demo123');
     const finance = await login(baseUrl, 'finance@vino.cc', 'demo123');
 
+    const logoutProbe = await login(baseUrl, 'buyer@vino.cc', 'demo123', 'e2e-logout-probe');
+    await api(baseUrl, '/api/platform/v1/auth/logout', {
+      token: logoutProbe.accessToken,
+      method: 'POST',
+      body: {},
+    });
+    await expectApiError(baseUrl, '/api/platform/v1/me', 401, { token: logoutProbe.accessToken });
+
+    const missing = await expectApiError(baseUrl, '/api/platform/v1/definitely-missing', 404, {
+      headers: { 'X-Request-Id': 'e2e-missing-route' },
+    });
+    assert.equal(missing.error.code, 'not_found');
+    assert.equal(missing.error.requestId, 'e2e-missing-route');
+
     const overview0 = await api(baseUrl, '/api/platform/v1/dashboard/overview', { token: admin.accessToken });
     assert.equal(overview0.summary.models, 0, 'isolated test state should not discover repo models');
+
+    const opsStatus = await api(baseUrl, '/api/platform/v1/admin/ops/status', { token: admin.accessToken });
+    assert.equal(opsStatus.service, 'vino_platform');
+    assert.equal(opsStatus.paths.dataRoot, tempRoot);
+    assert.equal(opsStatus.storage.stateFile.exists, true);
+    assert.equal(opsStatus.config.rateLimit.enabled, true);
+    assert.equal(opsStatus.collections.users >= 7, true);
+    assert.equal(opsStatus.risks.some((risk) => risk.code === 'backup_missing'), true);
+    await expectApiError(baseUrl, '/api/platform/v1/admin/ops/status', 403, { token: buyer.accessToken });
+    const doctor0 = await api(baseUrl, '/api/platform/v1/admin/ops/doctor', { token: admin.accessToken });
+    assert.equal(doctor0.ok, true);
+    assert.equal(doctor0.summary.errors, 0);
+    await expectApiError(baseUrl, '/api/platform/v1/admin/ops/doctor', 403, { token: buyer.accessToken });
 
     const unique = Date.now().toString().slice(-8);
     const created = await api(baseUrl, '/api/platform/v1/developer/models', {
@@ -223,6 +283,7 @@ async function main() {
     });
     assert.equal(ticket.modelId, modelId);
     assert.match(ticket.encryption.ticketSecret, /^[a-f0-9]+$/);
+    assert.equal(ticket.downloadURL, `${externalBaseUrl}/api/cloud/v1/download/${ticket.ticketId}`);
 
     const download = await fetch(`${baseUrl}/api/cloud/v1/download/${ticket.ticketId}`);
     assert.equal(download.ok, true);
@@ -333,6 +394,26 @@ async function main() {
     assert.equal(refund.order.status, 'refunded');
     assert.equal(refund.revoked.length, 1);
 
+    const maintenancePreview = await api(baseUrl, '/api/platform/v1/admin/ops/maintenance', {
+      token: admin.accessToken,
+      method: 'POST',
+      body: { dryRun: true, ticketRetentionDays: 0, downloadWorkRetentionMinutes: 0 },
+    });
+    assert.equal(maintenancePreview.dryRun, true);
+    assert.equal(maintenancePreview.state.ticketsRemoved >= 1, true);
+    await expectApiError(baseUrl, '/api/platform/v1/admin/ops/maintenance', 403, {
+      token: buyer.accessToken,
+      method: 'POST',
+      body: { dryRun: true },
+    });
+    const maintenanceRun = await api(baseUrl, '/api/platform/v1/admin/ops/maintenance', {
+      token: admin.accessToken,
+      method: 'POST',
+      body: { dryRun: false, ticketRetentionDays: 0, downloadWorkRetentionMinutes: 0 },
+    });
+    assert.equal(maintenanceRun.dryRun, false);
+    assert.equal(maintenanceRun.state.ticketsRemoved >= 1, true);
+
     await api(baseUrl, '/api/platform/v1/admin/users', {
       token: admin.accessToken,
       method: 'POST',
@@ -344,12 +425,50 @@ async function main() {
         organizationId: 'org-demo-001',
       },
     });
+    const concurrentEmails = Array.from({ length: 5 }, (_, index) => `e2e-concurrent-${index}-${unique}@vino.cc`);
+    await Promise.all(concurrentEmails.map((email, index) => api(baseUrl, '/api/platform/v1/admin/users', {
+      token: admin.accessToken,
+      method: 'POST',
+      body: {
+        displayName: `E2E Concurrent ${index}`,
+        email,
+        password: 'demo123',
+        role: 'buyer_operator',
+        organizationId: 'org-demo-001',
+      },
+    })));
+    const doctor1 = await api(baseUrl, '/api/platform/v1/admin/ops/doctor', { token: admin.accessToken });
+    assert.equal(doctor1.ok, true);
+    assert.equal(doctor1.summary.errors, 0);
 
     const stateText = await fs.readFile(path.join(tempRoot, 'state.json'), 'utf8');
     const state = JSON.parse(stateText);
     assert.equal(state.users.every((user) => !Object.prototype.hasOwnProperty.call(user, 'password')), true);
     assert.equal(state.users.every((user) => user.passwordHash && user.passwordSalt), true);
+    assert.equal(concurrentEmails.every((email) => state.users.some((user) => user.email === email)), true);
     assert.equal(state.auditLogs.length > 10, true);
+
+    let rateLimited = null;
+    for (let index = 0; index < 12; index += 1) {
+      const requestId = `e2e-rate-${index}`;
+      const response = await fetch(`${baseUrl}/api/platform/v1/rate-limit-probe`, {
+        headers: {
+          'X-Forwarded-For': '198.51.100.77',
+          'X-Request-Id': requestId,
+        },
+      });
+      const payload = await response.json();
+      if (response.status === 429) {
+        rateLimited = payload;
+        assert.equal(payload.error.code, 'rate_limited');
+        assert.equal(payload.error.requestId, requestId);
+        assert.equal(response.headers.get('x-request-id'), requestId);
+        assert.equal(response.headers.has('retry-after'), true);
+        break;
+      }
+      assert.equal(response.status, 404);
+    }
+    assert.ok(rateLimited, 'rate limit should eventually return 429 for a single client IP');
 
     console.log(JSON.stringify({
       ok: true,
@@ -358,6 +477,14 @@ async function main() {
       orderIds: [order1.order.orderId, webhookOrder.order.orderId],
       checks: [
         'auth',
+        'health-ready',
+        'logout-revocation',
+        'request-id-errors',
+        'rate-limit',
+        'ops-status',
+        'state-doctor',
+        'ops-maintenance',
+        'state-write-lock',
         'password-hash-migration',
         'developer-build-upload',
         'review-publish',
@@ -368,7 +495,9 @@ async function main() {
         'withdrawal',
         'terminal-models',
         'download-ticket',
+        'public-download-url',
         'encrypted-download',
+        'streamed-download',
         'lease-renew',
         'ingest',
         'support',
@@ -380,8 +509,7 @@ async function main() {
       ],
     }, null, 2));
   } finally {
-    child.kill('SIGTERM');
-    await new Promise((resolve) => child.once('exit', resolve));
+    await stopChild(child);
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }
