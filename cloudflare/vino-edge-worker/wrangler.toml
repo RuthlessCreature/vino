@@ -1,0 +1,10 @@
+name = "vino-edge-worker"
+main = "src/index.js"
+compatibility_date = "2026-07-13"
+workers_dev = true
+
+[vars]
+ORIGIN_BASE_URL = "http://8.138.186.217:8797"
+CACHE_PATH_PREFIXES = "/assets/,/cdn/,/models/"
+CACHE_DOWNLOAD_TICKETS = "false"
+EDGE_CACHE_TTL_SECONDS = "604800"

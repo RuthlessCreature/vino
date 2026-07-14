@@ -289,6 +289,22 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.invite-result {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(103, 211, 154, 0.38);
+  border-radius: 8px;
+  background: rgba(103, 211, 154, 0.08);
+}
+
+.invite-code {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
 .endpoint-meta,
 .flow-list {
   display: flex;

@@ -63,6 +63,10 @@ public struct VinoPhoneShellView: View {
                     onSyncStatus: syncStatus
                 )
             )
+            .onOpenURL { url in
+                guard url.scheme == "vino" else { return }
+                cloudCoordinator.claimDeviceInvite(url.absoluteString)
+            }
     }
 
     private var layeredPreview: some View {

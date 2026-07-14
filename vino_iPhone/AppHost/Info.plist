@@ -20,6 +20,17 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>cc.vino.iphone.provision</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vino</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
@@ -41,6 +52,8 @@
 	</dict>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>vino needs access to save captured photos and videos into the device photo library.</string>
+	<key>VinoDefaultCloudBaseURL</key>
+	<string>$(VINO_DEFAULT_CLOUD_BASE_URL)</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

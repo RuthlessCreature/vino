@@ -199,7 +199,7 @@ public final class VinoAppState: ObservableObject {
         static let cloudLoginEmail = "vino.cloud.loginEmail"
     }
 
-    private static let defaultCloudBaseURL = "http://127.0.0.1:8787"
+    private static let fallbackCloudBaseURL = "https://platform.example.com"
     private static let defaultLocalNodeBaseURL = "http://127.0.0.1:49030"
     private static let defaultCloudLoginEmail = "demo@vino.cc"
     private static let defaultCloudLoginPassword = "demo123"
@@ -257,7 +257,7 @@ public final class VinoAppState: ObservableObject {
         self.isRecording = false
         self.isConnectedToDesktop = false
         self.modelCatalog = .sample
-        self.cloudBaseURL = Self.persistentString(forKey: PersistentKey.cloudBaseURL, defaultValue: Self.defaultCloudBaseURL)
+        self.cloudBaseURL = Self.persistentString(forKey: PersistentKey.cloudBaseURL, defaultValue: Self.defaultCloudBaseURL())
         self.localNodeBaseURL = Self.persistentString(forKey: PersistentKey.localNodeBaseURL, defaultValue: Self.defaultLocalNodeBaseURL)
         self.cloudLoginEmail = Self.persistentString(forKey: PersistentKey.cloudLoginEmail, defaultValue: Self.defaultCloudLoginEmail)
         self.cloudLoginPassword = Self.defaultCloudLoginPassword
@@ -271,6 +271,15 @@ public final class VinoAppState: ObservableObject {
 
     private static func persistentString(forKey key: String, defaultValue: String) -> String {
         UserDefaults.standard.string(forKey: key) ?? defaultValue
+    }
+
+    private static func defaultCloudBaseURL() -> String {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "VinoDefaultCloudBaseURL") as? String
+        let value = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty || value.contains("$(") {
+            return fallbackCloudBaseURL
+        }
+        return value
     }
 
     private static func savePersistentString(_ value: String, forKey key: String) {

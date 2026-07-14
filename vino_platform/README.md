@@ -31,6 +31,9 @@
 - [06-security-compliance.md](docs/06-security-compliance.md)：模型资产、交易、隐私、审核与 App Store 边界。
 - [07-test-plan.md](docs/07-test-plan.md)：端到端验收、接口、安全、性能与回归测试。
 - [08-role-matrix.md](docs/08-role-matrix.md)：账户、角色、页面、按钮和数据隔离矩阵。
+- [09-ecs-docker-deploy.md](docs/09-ecs-docker-deploy.md)：阿里云 ECS + Docker 部署、HTTPS 反代、备份与运维检查。
+- [10-worker-cdn-split.md](docs/10-worker-cdn-split.md)：Cloudflare Worker / CDN 拆分判断与模型文件面迁移路径。
+- [11-cloudflare-ecs-cdn-sop.md](docs/11-cloudflare-ecs-cdn-sop.md)：Cloudflare 接入阿里云 ECS、Worker、R2/OSS/CDN 的部署 SOP。
 
 ## 第一版原则
 

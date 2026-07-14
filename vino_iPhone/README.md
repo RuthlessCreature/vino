@@ -21,12 +21,13 @@
 
 ## 当前 MVP 能力
 
-- 默认云端地址：`http://172.20.10.3:8787`
-- 云端登录、会话持久化、模型目录拉取
+- 默认云端地址：由 `Info.plist` 的 `VinoDefaultCloudBaseURL` / `VINO_DEFAULT_CLOUD_BASE_URL` 注入
+- 平台绑定优先：支持 `vino://provision?baseURL=...&code=...` 深链、绑定链接粘贴或短码输入
+- 云端会话持久化、模型目录拉取
 - 模型下载票据、加密产物下载、AES-GCM 解密、SHA-256 校验
 - 离线租约与设备绑定校验
 - 本地缓冲图片/结果后补传
-- Overlay 内直接配置并自动记住 `cloudBaseURL` / `localNodeBaseURL` / 账号 / 密码（密码存 Keychain）
+- 主 Overlay 不再暴露云端 URL / 账号 / 密码；手动账号密码登录保留在“连接平台”的高级入口内
 
 ## 当前边界
 

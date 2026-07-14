@@ -85,6 +85,10 @@ function plusDays(days) {
   return new Date(Date.now() + Number(days || 0) * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function plusMinutes(minutes) {
+  return new Date(Date.now() + Number(minutes || 0) * 60 * 1000).toISOString();
+}
+
 function shortHash(value) {
   return crypto.createHash('sha1').update(String(value)).digest('hex').slice(0, 12);
 }
@@ -769,6 +773,7 @@ function seedState() {
     payments: [],
     entitlements: [],
     devices: [],
+    deviceInvites: [],
     sessions: [],
     tickets: [],
     leases: [],
@@ -854,6 +859,7 @@ function normalizeState(state) {
   normalized.payments = Array.isArray(state.payments) ? state.payments : [];
   normalized.entitlements = Array.isArray(state.entitlements) ? state.entitlements : [];
   normalized.devices = Array.isArray(state.devices) ? state.devices : [];
+  normalized.deviceInvites = Array.isArray(state.deviceInvites) ? state.deviceInvites : [];
   normalized.sessions = Array.isArray(state.sessions) ? state.sessions : [];
   normalized.tickets = Array.isArray(state.tickets) ? state.tickets : [];
   normalized.leases = Array.isArray(state.leases) ? state.leases : [];
@@ -1295,6 +1301,7 @@ function scopedSummary(data) {
     paidOrders: orders.filter((item) => ['paid', 'delivering', 'completed'].includes(item.status)).length,
     entitlements: countItems(data.entitlements),
     devices: countItems(data.devices),
+    deviceInvites: countItems(data.deviceInvites),
     tickets: countItems(data.tickets),
     leases: countItems(data.leases),
     supportTickets: countItems(data.supportTickets),
@@ -1771,6 +1778,62 @@ function createSession(state, user, body) {
   return session;
 }
 
+function authSessionPayload(session, user) {
+  return {
+    accessToken: session.accessToken,
+    tokenType: session.tokenType,
+    expiresAt: session.expiresAt,
+    user: {
+      ...publicUser(user),
+      roleLabel: roleLabel(user.role),
+    },
+    permissions: permissionsForRole(user.role),
+  };
+}
+
+function normalizeInviteCode(raw) {
+  return String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
+function createDeviceInviteCode(state) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = crypto.randomBytes(5).toString('hex').toUpperCase();
+    if (!state.deviceInvites.some((invite) => invite.code === code && invite.status === 'active')) {
+      return code;
+    }
+  }
+  fail(500, 'invite_code_unavailable', 'failed to allocate invite code');
+}
+
+function deviceInviteLinks(req, invite) {
+  const baseURL = requestBaseUrl(req);
+  const code = encodeURIComponent(invite.code);
+  return {
+    baseURL,
+    claimURL: `${baseURL}/api/cloud/v1/device-invites/${code}/claim`,
+    webProvisioningURL: `${baseURL}/provision?code=${code}`,
+    deepLink: `vino://provision?baseURL=${encodeURIComponent(baseURL)}&code=${code}`,
+  };
+}
+
+function publicDeviceInvite(req, invite) {
+  return {
+    inviteId: invite.inviteId,
+    code: invite.code,
+    organizationId: invite.organizationId,
+    userId: invite.userId,
+    status: invite.status,
+    expiresAt: invite.expiresAt,
+    claimedAt: invite.claimedAt || null,
+    deviceId: invite.deviceId || null,
+    deviceName: invite.deviceName || '',
+    platform: invite.platform || '',
+    note: invite.note || '',
+    createdAt: invite.createdAt,
+    ...deviceInviteLinks(req, invite),
+  };
+}
+
 async function buildOverview(state) {
   const models = [];
   for (const model of state.models) {
@@ -1812,6 +1875,7 @@ async function buildOverview(state) {
       paidOrders: state.orders.filter((item) => ['paid', 'delivering', 'completed'].includes(item.status)).length,
       entitlements: state.entitlements.length,
       devices: state.devices.length,
+      deviceInvites: state.deviceInvites.length,
       tickets: state.tickets.length,
       leases: state.leases.length,
       supportTickets: state.supportTickets.length,
@@ -1836,6 +1900,7 @@ async function buildOverview(state) {
     payments: state.payments.slice(-20).reverse(),
     entitlements: entitlements.sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))),
     devices: state.devices.slice().sort((a, b) => String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || ''))),
+    deviceInvites: state.deviceInvites.slice(-30).reverse(),
     tickets: state.tickets.slice(-50).reverse(),
     leases: state.leases.slice(-30).reverse(),
     reviews: state.reviews.slice(-50).reverse(),
@@ -1904,6 +1969,7 @@ async function buildRoleOverview(state, session) {
     scoped.payments = [];
     scoped.entitlements = [];
     scoped.devices = [];
+    scoped.deviceInvites = [];
     scoped.tickets = [];
     scoped.leases = [];
     scoped.supportTickets = [];
@@ -1928,6 +1994,7 @@ async function buildRoleOverview(state, session) {
     scoped.developers = [];
     scoped.entitlements = [];
     scoped.devices = [];
+    scoped.deviceInvites = [];
     scoped.tickets = [];
     scoped.leases = [];
     scoped.supportTickets = [];
@@ -1956,6 +2023,7 @@ async function buildRoleOverview(state, session) {
     scoped.payments = [];
     scoped.entitlements = [];
     scoped.devices = [];
+    scoped.deviceInvites = [];
     scoped.tickets = [];
     scoped.leases = [];
     scoped.supportTickets = scoped.supportTickets.filter((ticket) => canAccessSupportTicket(state, session, ticket));
@@ -1987,6 +2055,7 @@ async function buildRoleOverview(state, session) {
     scoped.payments = scoped.payments.filter((payment) => scoped.orders.some((order) => order.orderId === payment.orderId));
     scoped.entitlements = scoped.entitlements.filter((entitlement) => entitlement.organizationId === ownOrganizationId);
     scoped.devices = scoped.devices.filter((device) => device.organizationId === ownOrganizationId);
+    scoped.deviceInvites = scoped.deviceInvites.filter((invite) => invite.organizationId === ownOrganizationId);
     scoped.tickets = scoped.tickets.filter((ticket) => ticket.organizationId === ownOrganizationId);
     scoped.leases = scoped.leases.filter((lease) => lease.organizationId === ownOrganizationId);
     scoped.supportTickets = scoped.supportTickets.filter((ticket) => ticket.organizationId === ownOrganizationId);
@@ -2662,6 +2731,113 @@ function revokeOrderEntitlements(state, order, actor, reason) {
   return revoked;
 }
 
+async function handleCreateDeviceInvite(state, req, res) {
+  const actor = requireAnyRole(state, req, ['super_admin', 'admin', 'platform_ops', 'buyer_admin']);
+  const body = parseJsonBuffer(await readBody(req));
+  const organizationId = isPlatformAdminRole(actor.role)
+    ? String(body.organizationId || actor.organizationId || '').trim()
+    : actor.organizationId;
+  const organization = state.organizations.find((item) => item.organizationId === organizationId);
+  if (!organization) {
+    fail(404, 'organization_not_found', 'organization not found');
+  }
+
+  const requestedUser = String(body.userId || body.email || '').trim().toLowerCase();
+  const user = requestedUser
+    ? state.users.find((item) =>
+      item.userId === requestedUser
+      || String(item.email || '').toLowerCase() === requestedUser
+    )
+    : state.users.find((item) => item.userId === actor.userId);
+  if (!user || user.organizationId !== organizationId || user.status === 'disabled') {
+    fail(404, 'invite_user_not_found', 'invite user not found');
+  }
+
+  const ttlMinutes = Math.min(parsePositiveInt(body.ttlMinutes, 10), 24 * 60);
+  const invite = {
+    inviteId: `invite-${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+    code: createDeviceInviteCode(state),
+    organizationId,
+    organizationName: organization.name,
+    userId: user.userId,
+    email: user.email,
+    displayName: user.displayName,
+    createdBy: actor.userId,
+    status: 'active',
+    expiresAt: plusMinutes(ttlMinutes),
+    claimedAt: null,
+    claimedBySessionId: null,
+    deviceId: null,
+    deviceName: '',
+    platform: body.platform || 'iOS',
+    note: String(body.note || '').trim(),
+    createdAt: isoNow(),
+    updatedAt: isoNow(),
+  };
+  state.deviceInvites.push(invite);
+  audit(state, actor, 'device_invite.create', 'device_invite', invite.inviteId, {
+    organizationId,
+    userId: user.userId,
+    expiresAt: invite.expiresAt,
+  });
+  await writeState(state);
+  sendJson(res, 201, { invite: publicDeviceInvite(req, invite) });
+}
+
+async function handleClaimDeviceInvite(state, req, res, codeFromPath) {
+  const body = parseJsonBuffer(await readBody(req));
+  const code = normalizeInviteCode(codeFromPath || body.code);
+  if (!code) {
+    fail(422, 'invite_code_required', 'invite code is required');
+  }
+  const invite = state.deviceInvites.find((item) => item.code === code);
+  if (!invite || invite.status !== 'active') {
+    fail(404, 'invite_not_found', 'device invite not found');
+  }
+  if (new Date(invite.expiresAt).getTime() <= Date.now()) {
+    invite.status = 'expired';
+    invite.updatedAt = isoNow();
+    await writeState(state);
+    fail(410, 'invite_expired', 'device invite expired');
+  }
+
+  const user = state.users.find((item) => item.userId === invite.userId && item.status !== 'disabled');
+  if (!user) {
+    fail(404, 'invite_user_not_found', 'invite user not found');
+  }
+
+  const session = createSession(state, user, {
+    deviceId: requiredString(body, 'deviceId', 'deviceId'),
+    deviceName: String(body.deviceName || body.deviceId || '').trim(),
+    platform: String(body.platform || invite.platform || 'iOS').trim(),
+  });
+  const device = upsertDevice(state, session, session.deviceId, session.deviceName, session.platform);
+  invite.status = 'claimed';
+  invite.claimedAt = isoNow();
+  invite.claimedBySessionId = session.sessionId;
+  invite.deviceId = device.deviceBindingId;
+  invite.deviceName = device.name;
+  invite.platform = device.platform;
+  invite.updatedAt = isoNow();
+  audit(state, session, 'device_invite.claim', 'device_invite', invite.inviteId, {
+    organizationId: invite.organizationId,
+    deviceId: device.deviceBindingId,
+    platform: device.platform,
+  });
+  await writeState(state);
+  sendJson(res, 200, {
+    ...authSessionPayload(session, user),
+    provisioning: {
+      organizationId: invite.organizationId,
+      organizationName: invite.organizationName,
+      deviceId: device.deviceBindingId,
+      deviceName: device.name,
+      platform: device.platform,
+      cloudBaseURL: requestBaseUrl(req),
+    },
+  });
+}
+
 async function handleLogin(state, req, res) {
   const body = parseJsonBuffer(await readBody(req));
   const loginId = String(body.email || body.account || body.username || '').trim().toLowerCase();
@@ -2675,16 +2851,7 @@ async function handleLogin(state, req, res) {
   upsertDevice(state, session, session.deviceId, session.deviceName, session.platform);
   audit(state, session, 'auth.login', 'user', user.userId, { platform: session.platform });
   await writeState(state);
-  sendJson(res, 200, {
-    accessToken: session.accessToken,
-    tokenType: session.tokenType,
-    expiresAt: session.expiresAt,
-    user: {
-      ...publicUser(user),
-      roleLabel: roleLabel(user.role),
-    },
-    permissions: permissionsForRole(user.role),
-  });
+  sendJson(res, 200, authSessionPayload(session, user));
 }
 
 async function handleLogout(state, req, res) {
@@ -2799,6 +2966,16 @@ async function handleStateRoute(req, res, pathname) {
 
   if (req.method === 'POST' && (pathname === '/api/platform/v1/auth/logout' || pathname === '/api/cloud/v1/auth/logout')) {
     await handleLogout(state, req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/v1/device-invites') {
+    await handleCreateDeviceInvite(state, req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/(platform|cloud)\/v1\/device-invites\/[^/]+\/claim$/.test(pathname)) {
+    await handleClaimDeviceInvite(state, req, res, decodeURIComponent(pathname.split('/')[5] || ''));
     return;
   }
 

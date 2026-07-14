@@ -7,6 +7,7 @@ public struct CameraOverlayView: View {
     @ObservedObject private var controlPlane: ControlPlaneCoordinator
     @ObservedObject private var cloudCoordinator: CloudControlCoordinator
     @State private var isCloudCatalogPresented = false
+    @State private var isCloudProvisioningPresented = false
 
     @Binding private var isTopGridVisible: Bool
     @Binding private var isControlDeckVisible: Bool
@@ -77,6 +78,9 @@ public struct CameraOverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $isCloudCatalogPresented) {
             CloudModelCatalogSheet(appState: appState, cloudCoordinator: cloudCoordinator)
+        }
+        .sheet(isPresented: $isCloudProvisioningPresented) {
+            CloudProvisioningSheet(appState: appState, cloudCoordinator: cloudCoordinator)
         }
     }
 
@@ -167,8 +171,8 @@ public struct CameraOverlayView: View {
                 }
 
                 infoCard(title: "云控制") {
-                    infoLine("登录网址", trimmedOrFallback(appState.cloudBaseURL))
-                    infoLine("账号", trimmedOrFallback(appState.cloudLoginEmail))
+                    infoLine("平台", appState.cloudSession == nil ? "未绑定" : appState.cloudSessionSummary)
+                    infoLine("入口", appState.cloudSession == nil ? "绑定平台" : "已连接")
                     infoLine("状态", cloudTaskSummary)
                 }
             }
@@ -282,13 +286,13 @@ public struct CameraOverlayView: View {
 
                     HStack(spacing: 8) {
                         compactActionButton(
-                            title: appState.cloudSession == nil ? "云端登录" : "退出登录",
+                            title: appState.cloudSession == nil ? "绑定平台" : "退出登录",
                             color: appState.cloudSession == nil ? VinoTheme.success : .white.opacity(0.12),
                             foreground: appState.cloudSession == nil ? .black : .white,
                             enabled: !cloudCoordinator.isBusy
                         ) {
                             if appState.cloudSession == nil {
-                                cloudCoordinator.signIn()
+                                isCloudProvisioningPresented = true
                             } else {
                                 cloudCoordinator.signOut()
                             }
@@ -302,27 +306,6 @@ public struct CameraOverlayView: View {
                         ) {
                             presentCloudModelCatalog()
                         }
-                    }
-
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        CompactTextEntryCard(
-                            title: "登录网址",
-                            text: $appState.cloudBaseURL,
-                            keyboardType: .URL,
-                            textContentType: .URL
-                        )
-                        CompactTextEntryCard(
-                            title: "账号",
-                            text: $appState.cloudLoginEmail,
-                            keyboardType: .emailAddress,
-                            textContentType: .username
-                        )
-                        CompactTextEntryCard(
-                            title: "密码",
-                            text: $appState.cloudLoginPassword,
-                            isSecure: true,
-                            textContentType: .password
-                        )
                     }
 
                     LazyVGrid(columns: columns, spacing: 8) {
@@ -448,11 +431,6 @@ public struct CameraOverlayView: View {
         }
 
         return activeModels.map { "\($0.name)@\($0.version)" }.joined(separator: "  |  ")
-    }
-
-    private func trimmedOrFallback(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "-" : trimmed
     }
 
     private func presentCloudModelCatalog() {
@@ -636,6 +614,82 @@ public struct CameraOverlayView: View {
     }
 }
 
+private struct CloudProvisioningSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @ObservedObject private var appState: VinoAppState
+    @ObservedObject private var cloudCoordinator: CloudControlCoordinator
+    @State private var provisioningInput = ""
+    @State private var isAdvancedLoginVisible = false
+
+    init(appState: VinoAppState, cloudCoordinator: CloudControlCoordinator) {
+        self._appState = ObservedObject(wrappedValue: appState)
+        self._cloudCoordinator = ObservedObject(wrappedValue: cloudCoordinator)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("绑定平台") {
+                    TextField("绑定链接或绑定码", text: $provisioningInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                        .textContentType(.oneTimeCode)
+
+                    Button("绑定并同步模型") {
+                        cloudCoordinator.claimDeviceInvite(provisioningInput)
+                        dismiss()
+                    }
+                    .disabled(provisioningInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || cloudCoordinator.isBusy)
+                }
+
+                Section {
+                    DisclosureGroup("高级手动登录", isExpanded: $isAdvancedLoginVisible) {
+                        TextField("平台地址", text: $appState.cloudBaseURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.URL)
+                            .textContentType(.URL)
+
+                        TextField("账号", text: $appState.cloudLoginEmail)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.username)
+
+                        SecureField("密码", text: $appState.cloudLoginPassword)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .textContentType(.password)
+
+                        Button("账号密码登录") {
+                            cloudCoordinator.signIn()
+                            dismiss()
+                        }
+                        .disabled(cloudCoordinator.isBusy)
+                    }
+                }
+
+                if let lastError = cloudCoordinator.lastErrorMessage, !lastError.isEmpty {
+                    Section {
+                        Text(lastError)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("连接平台")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("关闭") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct CloudModelCatalogSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -809,48 +863,6 @@ private struct CloudModelCatalogSheet: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Color(.tertiarySystemGroupedBackground), in: Capsule(style: .continuous))
-    }
-}
-
-private struct CompactTextEntryCard: View {
-    let title: String
-    @Binding var text: String
-    var isSecure: Bool = false
-    var keyboardType: UIKeyboardType = .default
-    var textContentType: UITextContentType?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundStyle(VinoTheme.textSecondary)
-
-            if isSecure {
-                SecureField(title, text: $text)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .keyboardType(keyboardType)
-                    .textContentType(textContentType)
-                    .submitLabel(.done)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white)
-            } else {
-                TextField(title, text: $text)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .keyboardType(keyboardType)
-                    .textContentType(textContentType)
-                    .submitLabel(.done)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white)
-            }
-        }
-        .padding(8)
-        .background(.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(VinoTheme.panelStroke, lineWidth: 1)
-        )
     }
 }
 

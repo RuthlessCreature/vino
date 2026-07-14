@@ -1,0 +1,11 @@
+name = "vino-edge-worker"
+main = "src/index.js"
+compatibility_date = "2026-07-13"
+
+# After copying this file to wrangler.toml, set ORIGIN_BASE_URL to the
+# HTTPS origin that points to your Alibaba Cloud ECS Nginx/vino_platform.
+[vars]
+ORIGIN_BASE_URL = "https://origin.example.com"
+CACHE_PATH_PREFIXES = "/assets/,/cdn/,/models/"
+CACHE_DOWNLOAD_TICKETS = "false"
+EDGE_CACHE_TTL_SECONDS = "604800"

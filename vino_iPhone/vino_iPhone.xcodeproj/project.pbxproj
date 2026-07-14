@@ -429,6 +429,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cc.vino.iphone;
 				PRODUCT_MODULE_NAME = vino_iPhone;
+				VINO_DEFAULT_CLOUD_BASE_URL = "https://platform.example.com";
 				PRODUCT_NAME = "灵眼GX";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -463,6 +464,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cc.vino.iphone;
 				PRODUCT_MODULE_NAME = vino_iPhone;
+				VINO_DEFAULT_CLOUD_BASE_URL = "https://platform.example.com";
 				PRODUCT_NAME = "灵眼GX";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

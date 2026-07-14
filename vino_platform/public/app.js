@@ -15,6 +15,12 @@ const els = {
   copyTerminalEndpointButton: document.getElementById('copyTerminalEndpointButton'),
   terminalHealthLabel: document.getElementById('terminalHealthLabel'),
   terminalHealthList: document.getElementById('terminalHealthList'),
+  deviceInviteForm: document.getElementById('deviceInviteForm'),
+  deviceInviteUserInput: document.getElementById('deviceInviteUserInput'),
+  deviceInviteTtlInput: document.getElementById('deviceInviteTtlInput'),
+  deviceInviteNoteInput: document.getElementById('deviceInviteNoteInput'),
+  deviceInviteResult: document.getElementById('deviceInviteResult'),
+  copyDeviceInviteButton: document.getElementById('copyDeviceInviteButton'),
   refreshButton: document.getElementById('refreshButton'),
   logoutButton: document.getElementById('logoutButton'),
   summaryGrid: document.getElementById('summaryGrid'),
@@ -155,6 +161,7 @@ const state = {
   permissions: JSON.parse(localStorage.getItem('vino_platform_permissions') || 'null'),
   overview: null,
   marketModels: [],
+  latestDeviceInviteLink: '',
 };
 
 const ALL_TABS = ['overview', 'market', 'developer', 'commerce', 'catalog', 'terminal', 'service', 'finance', 'ops'];
@@ -489,7 +496,12 @@ function renderSelects(data) {
     const model = data.models.find((item) => item.modelId === sku.modelId);
     return option(sku.skuId, `${model?.name || sku.modelId} / ${sku.name} / ${formatMoney(sku.priceAmount, sku.currency)}`);
   }).join('');
+  renderDeviceInviteOptions(data);
   renderAssignmentOptions();
+}
+
+function renderDeviceInviteOptions(data) {
+  els.deviceInviteUserInput.innerHTML = data.users.map((user) => option(user.userId, `${user.displayName} / ${user.email}`)).join('');
 }
 
 function renderAssignmentOptions() {
@@ -1187,6 +1199,48 @@ els.copyTerminalEndpointButton.addEventListener('click', async () => {
     showToast('Cloud URL 已复制');
   } catch {
     showToast(value);
+  }
+});
+
+els.deviceInviteForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    const payload = await fetchJson('/api/platform/v1/device-invites', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: els.deviceInviteUserInput.value,
+        ttlMinutes: Number(els.deviceInviteTtlInput.value || 10),
+        note: els.deviceInviteNoteInput.value,
+        platform: 'iOS',
+      }),
+    });
+    const invite = payload.invite;
+    state.latestDeviceInviteLink = invite.deepLink || invite.webProvisioningURL || invite.claimURL;
+    els.copyDeviceInviteButton.disabled = !state.latestDeviceInviteLink;
+    els.deviceInviteResult.classList.remove('hidden');
+    els.deviceInviteResult.innerHTML = `
+      <div class="summary-label">绑定码</div>
+      <div class="invite-code mono">${escapeHtml(invite.code)}</div>
+      <div class="summary-detail">过期时间：${escapeHtml(formatDate(invite.expiresAt))}</div>
+      <div class="endpoint-value mono">${escapeHtml(state.latestDeviceInviteLink)}</div>
+      <div class="summary-detail">iPhone 端可粘贴完整链接，也可只输入绑定码。</div>
+    `;
+    await refreshOverview();
+    showToast('绑定码已生成');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+els.copyDeviceInviteButton.addEventListener('click', async () => {
+  if (!state.latestDeviceInviteLink) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(state.latestDeviceInviteLink);
+    showToast('绑定链接已复制');
+  } catch {
+    showToast(state.latestDeviceInviteLink);
   }
 });
 

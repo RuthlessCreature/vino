@@ -61,6 +61,84 @@ Response:
 }
 ```
 
+### 设备邀请绑定
+
+平台端创建一次性绑定邀请：
+
+`POST /api/platform/v1/device-invites`
+
+Request:
+
+```json
+{
+  "userId": "user_001",
+  "ttlMinutes": 10,
+  "platform": "iOS",
+  "note": "产线 A iPhone"
+}
+```
+
+Response:
+
+```json
+{
+  "invite": {
+    "inviteId": "invite_001",
+    "code": "A1B2C3D4E5",
+    "expiresAt": "2026-07-13T08:10:00.000Z",
+    "baseURL": "https://platform.example.com",
+    "claimURL": "https://platform.example.com/api/cloud/v1/device-invites/A1B2C3D4E5/claim",
+    "deepLink": "vino://provision?baseURL=https%3A%2F%2Fplatform.example.com&code=A1B2C3D4E5"
+  }
+}
+```
+
+iPhone 端兑换绑定邀请：
+
+`POST /api/cloud/v1/device-invites/{code}/claim`
+
+Request:
+
+```json
+{
+  "deviceId": "iphone-device-binding-id",
+  "deviceName": "iPhone",
+  "platform": "iOS"
+}
+```
+
+Response 与登录接口保持兼容，额外返回 `provisioning`：
+
+```json
+{
+  "accessToken": "token",
+  "tokenType": "Bearer",
+  "expiresAt": "2026-07-20T08:00:00.000Z",
+  "user": {
+    "userId": "user_001",
+    "email": "operator@vino.cc",
+    "displayName": "Operator",
+    "organizationId": "org_001",
+    "organizationName": "Vino Demo Factory"
+  },
+  "provisioning": {
+    "organizationId": "org_001",
+    "organizationName": "Vino Demo Factory",
+    "deviceId": "iphone-device-binding-id",
+    "deviceName": "iPhone",
+    "platform": "iOS",
+    "cloudBaseURL": "https://platform.example.com"
+  }
+}
+```
+
+Rules:
+
+- Invite code 默认 10 分钟有效，最多 24 小时。
+- Invite code 只能兑换一次，兑换后状态变为 `claimed`。
+- 二维码/深链只放短期 code 和平台入口，不放用户密码、长期 token、模型下载地址。
+- 账号密码登录保留为高级兜底入口，普通 iPhone 绑定优先走 invite claim。
+
 ### 模型列表
 
 `GET /api/cloud/v1/models`

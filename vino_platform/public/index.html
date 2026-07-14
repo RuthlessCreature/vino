@@ -614,6 +614,32 @@
           </section>
         </section>
 
+        <section class="panel">
+          <div class="panel-head">
+            <h2>iPhone 绑定邀请</h2>
+            <span class="badge ok">Device Invite</span>
+          </div>
+          <form id="deviceInviteForm" class="form-grid">
+            <label>
+              <span>绑定用户</span>
+              <select id="deviceInviteUserInput" required></select>
+            </label>
+            <label>
+              <span>有效期（分钟）</span>
+              <input id="deviceInviteTtlInput" type="number" min="1" max="1440" value="10" />
+            </label>
+            <label class="span-2">
+              <span>备注</span>
+              <input id="deviceInviteNoteInput" placeholder="例如：产线 A 首台 iPhone" />
+            </label>
+            <div class="form-actions span-2">
+              <button class="btn primary" type="submit">生成绑定码</button>
+              <button id="copyDeviceInviteButton" class="btn" type="button" disabled>复制绑定链接</button>
+            </div>
+          </form>
+          <div id="deviceInviteResult" class="invite-result hidden"></div>
+        </section>
+
         <section class="layout two">
           <section class="panel">
             <div class="panel-head">

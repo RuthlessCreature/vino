@@ -67,6 +67,41 @@ public final class CloudControlCoordinator: ObservableObject {
         }
     }
 
+    public func claimDeviceInvite(_ rawInput: String) {
+        Task {
+            guard let appState else { return }
+            guard let provisioning = parseProvisioningInput(rawInput, fallbackBaseURL: appState.cloudBaseURL) else {
+                lastErrorMessage = "绑定码无效"
+                appState.lastCloudMessage = "绑定码无效"
+                return
+            }
+
+            isBusy = true
+            statusSummary = "绑定平台中…"
+            appState.lastCloudMessage = "正在绑定平台…"
+            lastErrorMessage = nil
+            defer { isBusy = false }
+
+            do {
+                appState.cloudBaseURL = provisioning.baseURL
+                let session = try await authService.claimDeviceInvite(
+                    baseURL: provisioning.baseURL,
+                    code: provisioning.code
+                )
+                await sessionStore.saveSession(session)
+                appState.updateCloudSession(session)
+                statusSummary = "已绑定 · \(session.user.organizationName)"
+                appState.lastCloudMessage = "平台绑定成功"
+                await syncCatalogInternal()
+                await refreshBufferedCount()
+            } catch {
+                lastErrorMessage = error.localizedDescription
+                appState.lastCloudMessage = error.localizedDescription
+                statusSummary = "绑定失败"
+            }
+        }
+    }
+
     public func signOut() {
         Task {
             guard let appState else { return }
@@ -317,5 +352,47 @@ public final class CloudControlCoordinator: ObservableObject {
             pendingCount = await uploadService.countJobs()
         }
         appState.pendingUploadCount = pendingCount
+    }
+
+    private struct ProvisioningInput {
+        var baseURL: String
+        var code: String
+    }
+
+    private func parseProvisioningInput(_ rawInput: String, fallbackBaseURL: String) -> ProvisioningInput? {
+        let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        if let components = URLComponents(string: trimmed), components.scheme != nil {
+            let code = queryValue("code", in: components)
+                ?? queryValue("invite", in: components)
+                ?? queryValue("deviceInvite", in: components)
+            let baseURL = queryValue("baseURL", in: components)
+                ?? queryValue("baseUrl", in: components)
+                ?? origin(from: components)
+                ?? fallbackBaseURL
+            if let code, !code.isEmpty {
+                return ProvisioningInput(baseURL: baseURL, code: code)
+            }
+        }
+
+        return ProvisioningInput(baseURL: fallbackBaseURL, code: trimmed)
+    }
+
+    private func queryValue(_ name: String, in components: URLComponents) -> String? {
+        components.queryItems?.first(where: { $0.name == name })?.value?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func origin(from components: URLComponents) -> String? {
+        guard let scheme = components.scheme, scheme == "http" || scheme == "https", let host = components.host else {
+            return nil
+        }
+        var value = "\(scheme)://\(host)"
+        if let port = components.port {
+            value += ":\(port)"
+        }
+        return value
     }
 }

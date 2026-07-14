@@ -58,6 +58,28 @@ public actor AuthService {
         )
     }
 
+    public func claimDeviceInvite(baseURL: String, code: String) async throws -> AuthSession {
+        let response: AuthLoginResponse = try await sendJSONRequest(
+            baseURL: baseURL,
+            path: "/api/cloud/v1/device-invites/\(code)/claim",
+            method: "POST",
+            bearerToken: nil,
+            jsonBody: [
+                "deviceId": ModelLicenseVerifier.currentDeviceBindingID(),
+                "deviceName": UIDevice.current.name,
+                "platform": "iOS"
+            ]
+        )
+
+        return AuthSession(
+            accessToken: response.accessToken,
+            tokenType: response.tokenType,
+            expiresAt: response.expiresAt,
+            user: response.user,
+            cloudBaseURL: normalizedBaseURL(baseURL) ?? baseURL
+        )
+    }
+
     public func fetchModelCatalog(baseURL: String, session: AuthSession) async throws -> CloudModelCatalog {
         let response: CloudModelCatalogResponse = try await sendJSONRequest(
             baseURL: baseURL,
